@@ -1,0 +1,10 @@
+{
+    "application_id": {
+        "desc": "The application ID for the Discord bot",
+        "value": "FILL_ME_IN"
+    },
+    "bot_token": {
+        "desc": "The Discord bot token",
+        "value": "FILL_ME_IN"
+    }
+}
