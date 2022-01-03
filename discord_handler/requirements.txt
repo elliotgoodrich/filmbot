@@ -1,1 +1,2 @@
-nacl
+boto3
+pynacl
