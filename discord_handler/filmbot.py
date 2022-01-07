@@ -1,4 +1,5 @@
 import boto3
+from enum import Enum
 from UserError import UserError
 
 MEMBERS_TABLE = "filmbot-members"
@@ -53,6 +54,48 @@ VOTES_TABLE = "filmbot-votes"
 #   | date-cast        | date    |                            |
 #   +------------------+---------+----------------------------+
 #
+def keyed(v):
+    """Convert the specified `v` into a dict keyed by the type, that will be accepted by DynamoDB"""
+    if isinstance(v, bool):
+        return {"BOOL": v}
+    elif isinstance(v, int):
+        return {"N": str(v)}
+    elif isinstance(v, str):
+        return {"S": v}
+    elif v is None:
+        return {"NULL": True}
+    else:
+        assert False, "'" + v + "' is not an accepted input for 'keyed'"
+
+
+def unkeyed(v):
+    """Convert the specified `v` from DynamoDB's dict keyed by the type to
+    a primitive Python type."""
+    for typeName in v:
+        value = v[typeName]
+        if typeName == "BOOL":
+            return value
+        if typeName == "S":
+            return value
+        elif typeName == "N":
+            return int(value)
+        elif typeName == "NULL":
+            return None
+        else:
+            assert False, "'" + typeName + "' is not an understood type for 'unkeyed'"
+
+
+def liftOutTypes(map):
+    """Unkey the value for every element of the specified `map`."""
+    result = {}
+    for key in map:
+        result[key] = unkeyed(map[key])
+    return result
+
+
+class VotingStatus(Enum):
+    UNCOMPLETE = 0
+    COMPLETE = 1
 
 
 class FilmBot:
@@ -77,6 +120,51 @@ class FilmBot:
     @property
     def client(self):
         return self._dynamodb_client
+
+    def get_users(self):
+        """Return a dictionary keyed by users against their votes, nominations, etc."""
+        scan_kwargs = {
+            "Select": "ALL_ATTRIBUTES",
+            "ReturnConsumedCapacity": "NONE",
+        }
+
+        members_table = self.members_table
+        done = False
+        start_key = None
+        users = {}
+        while not done:
+            if start_key:
+                scan_kwargs["ExclusiveStartKey"] = start_key
+            response = members_table.scan(**scan_kwargs)
+            for user in response.get("Items"):
+                users[user["discord-user-id"]] = user
+            start_key = response.get("LastEvaluatedKey", None)
+            done = start_key is None
+
+        return users
+
+    def get_nominations(self):
+        """Return an array of currently nominated films in the order that they should
+        be watched based on their vote tally."""
+
+        film_ids = list(
+            map(
+                lambda n: {"film-id": {"S": n["nominated-film-id"]}},
+                filter(lambda n: n["nominated-film-id"], self.get_users().values()),
+            )
+        )
+
+        response = self.client.batch_get_item(
+            RequestItems={
+                NOMINATIONS_TABLE: {"Keys": film_ids, "ConsistentRead": True}
+            },
+            ReturnConsumedCapacity="NONE",
+        )
+
+        cleaned = map(liftOutTypes, response["Responses"][NOMINATIONS_TABLE])
+        return sorted(
+            cleaned, reverse=True, key=lambda n: n["cast-votes"] + n["attendance-votes"]
+        )
 
     def register_user(self, discord_user_id, datetime):
         """Attempt to register the specified `discord_user_id` at the specified `datetime`.
@@ -146,15 +234,119 @@ class FilmBot:
                 "Unable to nominate a film as you have already nominated one"
             )
 
-    def cast_preference_vote(self, discord_user_id, imdb_film_id):
+    def cast_preference_vote(self, *, DiscordUserID, FilmID):
+        """Attempt to cast a vote by the specified `DiscordUserID` for the specified `FilmID` (changing any previously cast vote)
+        If `DiscordUserID` is not a registered user, or `FilmID` refers to your nominated film, or `DiscordUserID` already has a nomination then throw an exception.
+        Return whether the voting is complete"""
+
+        users = self.get_users()
+        if DiscordUserID not in users:
+            raise UserError("User is not registered")
+
+        our_user = users[DiscordUserID]
+        previous_vote = our_user["vote-id"]
+
+        # Disallow voting for your own nomination
+        if FilmID == our_user["nominated-film-id"]:
+            raise UserError("Cannot vote for your own film")
+
+        # Check everyone has nominated
+        user_list = users.values()
+        everyone_has_nominated = any(u for u in user_list if u["nominated-film-id"])
+        if not everyone_has_nominated:
+            raise UserError("Cannot vote unless all users have nominated")
+
+        # Record if this is the last user to vote
+        user_voted_count = sum(user["vote-id"] is not None for user in user_list)
+        our_user_hasnt_voted = our_user["vote-id"] is None
+        is_last_vote = user_voted_count + int(our_user_hasnt_voted) == len(user_list)
+
+        # Do nothing if user votes for the same thing
+        if previous_vote == FilmID:
+            return (
+                VotingStatus.COMPLETE
+                if user_voted_count == len(user_list)
+                else VotingStatus.UNCOMPLETE
+            )
+
+        items = [
+            # Change vote-id and make sure it matches the one we previously read
+            # i.e. there haven't been any changes between our read and this write
+            {
+                "Update": {
+                    "TableName": MEMBERS_TABLE,
+                    "Key": {"discord-user-id": {"S": DiscordUserID}},
+                    "ExpressionAttributeValues": {
+                        ":new_vote_id": {"S": FilmID},
+                        ":previous_vote_id": keyed(previous_vote),
+                    },
+                    "ExpressionAttributeNames": {
+                        "#vote": "vote-id",
+                        "#discord-user-id": "discord-user-id",
+                    },
+                    "ConditionExpression": "attribute_exists(#discord-user-id) AND #vote = :previous_vote_id",
+                    "UpdateExpression": "SET #vote = :new_vote_id",
+                }
+            },
+            # Increment vote count in nominations for new film (also check it exists)
+            {
+                "Update": {
+                    "TableName": NOMINATIONS_TABLE,
+                    "Key": {"film-id": {"S": FilmID}},
+                    "ExpressionAttributeValues": {
+                        ":inc": {"N": "1"},
+                    },
+                    "ExpressionAttributeNames": {
+                        "#cast_votes": "cast-votes",
+                        "#film-id": "film-id",
+                    },
+                    "ConditionExpression": "attribute_exists(#film-id)",
+                    "UpdateExpression": "SET #cast_votes = #cast_votes + :inc",
+                }
+            },
+        ]
+
+        if previous_vote is not None:
+            # Decrement vote count for previous film
+            items.append(
+                {
+                    "Update": {
+                        "TableName": NOMINATIONS_TABLE,
+                        "Key": {"film-id": {"S": previous_vote}},
+                        "ExpressionAttributeValues": {
+                            ":dec": {"N": "-1"},
+                        },
+                        "ExpressionAttributeNames": {
+                            "#cast_votes": "cast-votes",
+                        },
+                        # We don't need a ConditionExpression as we should never be updating
+                        # something that wasn't in the table
+                        "UpdateExpression": "SET #cast_votes = #cast_votes + :dec",
+                    }
+                }
+            )
+
+        # The transactions below really shouldn't throw.  The only way this throws is if we:
+        #   1. aren't registered,
+        #   2. vote for a `FilmID` that doesn't exists, or
+        #   3. the user votes (very) quickly in succession so updating our
+        #      users table fails because the current film we voted on doesn't
+        #      match what we previously extracted.
+        #
+        # If any of these actually happen in practice then a more descriptive
+        # error message can be returned, or hopefully the issue can be fixed.
+        self.client.transact_write_items(TransactItems=items)
+        return (
+            VotingStatus.COMPLETE
+            if user_voted_count + int(our_user_hasnt_voted) == len(user_list)
+            else VotingStatus.UNCOMPLETE
+        )
+
+    def start_watching_film(self, imdb_film_id):
         # TODO
         assert False
 
     def record_attendance_vote(self, discord_user_id):
-        # TODO
-        assert False
-
-    def start_watching_film(self, imdb_film_id):
         # TODO
         assert False
 
