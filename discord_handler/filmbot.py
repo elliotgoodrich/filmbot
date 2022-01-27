@@ -89,6 +89,7 @@ def count_attendence(film):
     nominator_attended = film[FILM_DiscordUserID] in film[FILM_UsersAttended]
     return len(film[FILM_UsersAttended]) - int(nominator_attended)
 
+
 class VotingStatus(Enum):
     UNCOMPLETE = 0
     COMPLETE = 1
@@ -212,7 +213,6 @@ class FilmBot:
             response = self.client.query(**kwargs)
             for film in response.get("Items"):
                 fixed_film = unkey_map(film)
-                film_id = extract_SK(fixed_film[FILM_SK])
                 del fixed_film[FILM_PK]
                 films.append(fixed_film)
             start_key = response.get("LastEvaluatedKey", None)
@@ -265,7 +265,7 @@ class FilmBot:
                                 FILM_FilmName: {"S": FilmName},
                                 FILM_DiscordUserID: {"S": DiscordUserID},
                                 FILM_CastVotes: {"N": "0"},
-                                FILM_UsersAttended: {"SS": [] },
+                                FILM_UsersAttended: {"SS": []},
                                 FILM_DateNominated: {
                                     "S": DateTime.isoformat()
                                 },
@@ -308,9 +308,6 @@ class FilmBot:
             user[USER_VoteID] is not None for user in user_list
         )
         our_user_hasnt_voted = our_user[USER_VoteID] is None
-        is_last_vote = user_voted_count + int(our_user_hasnt_voted) == len(
-            user_list
-        )
 
         # Do nothing if user votes for the same thing
         if previous_vote == FilmID:
@@ -428,6 +425,7 @@ class FilmBot:
                 f"begins_with({FILM_SK}, :WatchedPrefix)"
             ),
             ScanIndexForward=False,
+            Limit=1,
         )
 
         if response["Items"]:
@@ -500,4 +498,99 @@ class FilmBot:
         self.client.transact_write_items(TransactItems=items)
 
     def record_attendance_vote(self, *, DiscordUserID, DateTime):
-        assert False
+        """
+        Attempt to record that the `DiscordUserID` is present and watching
+        the film at the specified `DateTime`.  Throw an exception if the
+        user is not registered or there is no film currently being watched.
+        """
+        response = self.client.get_item(
+            TableName=TABLE_NAME,
+            Key={
+                USER_PK: {"S": self.guildID},
+                USER_SK: {"S": f"USER.{DiscordUserID}"},
+            },
+        )
+        if "Item" not in response:
+            raise UserError(
+                "You cannot register attendance until you have nominated"
+            )
+
+        user = unkey_map(response["Item"])
+
+        # Do nothing if the user has already recorded their attendance
+        if user[USER_AttendanceVoteID] is not None:
+            return
+
+        # Get the last film watched and see if we fall within the correct
+        # time frame
+        response = self.client.query(
+            TableName=TABLE_NAME,
+            ExpressionAttributeValues={
+                ":GuildID": {"S": self.guildID},
+                ":WatchedPrefix": {"S": "FILM.WATCHED."},
+            },
+            KeyConditionExpression=(
+                f"{FILM_PK} = :GuildID AND "
+                f"begins_with({FILM_SK}, :WatchedPrefix)"
+            ),
+            ScanIndexForward=False,
+            Limit=1,
+        )
+
+        if not response["Items"]:
+            raise UserError("There are no films that have been watched")
+
+        latest_watched_film = response["Items"][0]
+        watch_time, film_id = extract_watched(
+            latest_watched_film[FILM_SK]["S"]
+        )
+        watch_time = datetime.fromisoformat(watch_time)
+        # TODO: Get runtime from IMDB and use this
+        end_time = watch_time + timedelta(hours=4)
+
+        # We shouldn't be recording attendance before we started watching a
+        # film, but check for this anyway.
+        if DateTime < watch_time:
+            raise UserError(
+                "Cannot record attendance for a film that hasn't yet started"
+            )
+
+        if DateTime > end_time:
+            raise UserError(
+                f"The cutoff for registering attendance was {end_time}"
+            )
+
+        items = [
+            {
+                # Record that the user has an attendance vote
+                "Update": {
+                    "TableName": TABLE_NAME,
+                    "Key": {
+                        USER_PK: {"S": self.guildID},
+                        USER_SK: {"S": user[USER_SK]},
+                    },
+                    "ExpressionAttributeValues": {
+                        ":Null": {"NULL": True},
+                        ":AttendanceVote": {"S": film_id},
+                    },
+                    # Check that we haven't recorded an attendance in the meantime
+                    "ConditionExpression": f"{USER_AttendanceVoteID} = :Null",
+                    "UpdateExpression": f"SET {USER_AttendanceVoteID} = :AttendanceVote",
+                }
+            },
+            {
+                "Update": {
+                    "TableName": TABLE_NAME,
+                    "Key": {
+                        FILM_PK: {"S": self.guildID},
+                        FILM_SK: latest_watched_film[FILM_SK],
+                    },
+                    "ExpressionAttributeValues": {
+                        ":User": {"SS": [DiscordUserID]},
+                    },
+                    "UpdateExpression": f"ADD {FILM_UsersAttended} :User",
+                }
+            },
+        ]
+
+        self.client.transact_write_items(TransactItems=items)
