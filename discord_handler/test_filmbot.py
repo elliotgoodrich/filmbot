@@ -248,7 +248,9 @@ class TestFilmBot(unittest.TestCase):
                 "FilmName": "FilmName6",
                 "DiscordUserID": "UserF",
                 "CastVotes": 10,
-                "UsersAttended": set(["A", "B", "C", "D", "E", "F", "G", "H", "I"]),
+                "UsersAttended": set(
+                    ["A", "B", "C", "D", "E", "F", "G", "H", "I"]
+                ),
                 "DateNominated": d.isoformat(),
             },
         ]
@@ -350,7 +352,9 @@ class TestFilmBot(unittest.TestCase):
                 "FilmName": "FilmName4",
                 "DiscordUserID": "UserD",
                 "CastVotes": 10,
-                "UsersAttended": set(["A", "B", "C", "D", "E", "F", "G", "H", "I"]),
+                "UsersAttended": set(
+                    ["A", "B", "C", "D", "E", "F", "G", "H", "I"]
+                ),
                 "DateNominated": (d + timedelta(seconds=3)).isoformat(),
             },
         ]
@@ -385,7 +389,9 @@ class TestFilmBot(unittest.TestCase):
                 "FilmName": "FilmName4",
                 "DiscordUserID": "UserD",
                 "CastVotes": 10,
-                "UsersAttended": set(["A", "B", "C", "D", "E", "F", "G", "H", "I"]),
+                "UsersAttended": set(
+                    ["A", "B", "C", "D", "E", "F", "G", "H", "I"]
+                ),
                 "DateNominated": (d + timedelta(seconds=3)).isoformat(),
             },
         ]
@@ -802,6 +808,48 @@ class TestFilmBot(unittest.TestCase):
         watched_film = expected[guild1].pop(FILM_1)
         watched_film["SK"] = f"FILM.WATCHED.{good_time.isoformat()}.{film_id1}"
         expected[guild1].insert(4, watched_film)
+
+        # Fixup the indices
+        FILM_1 = 4
+        FILM_2 = 0
+        FILM_3 = 1
+        USER_1 = 5
+        USER_2 = 6
+        USER_3 = 7
+        self.assertEqual(grab_db(self.dynamodb_client), expected)
+
+        # Check we can't record attendance before the film is watched
+        too_early = good_time - timedelta(seconds=1)
+        with self.assertRaises(UserError):
+            filmbot.record_attendance_vote(
+                DiscordUserID=user_id1, DateTime=too_early
+            )
+        self.assertEqual(grab_db(self.dynamodb_client), expected)
+
+        # Check we can't record attendance after the film has finished
+        # (which is hard-coded to 4 hours right now)
+        too_late = good_time + timedelta(hours=4, seconds=1)
+        with self.assertRaises(UserError):
+            filmbot.record_attendance_vote(
+                DiscordUserID=user_id1, DateTime=too_late
+            )
+        self.assertEqual(grab_db(self.dynamodb_client), expected)
+
+        # Check we can record attendance for the nominator
+        filmbot.record_attendance_vote(
+            DiscordUserID=user_id1, DateTime=good_time
+        )
+        expected[guild1][USER_1]["AttendanceVoteID"] = film_id1
+        expected[guild1][FILM_1]["UsersAttended"] = set([user_id1])
+        self.assertEqual(grab_db(self.dynamodb_client), expected)
+
+        # Check we can record attendance on the cut off
+        just_in_time = good_time + timedelta(hours=4)
+        filmbot.record_attendance_vote(
+            DiscordUserID=user_id2, DateTime=just_in_time
+        )
+        expected[guild1][USER_2]["AttendanceVoteID"] = film_id1
+        expected[guild1][FILM_1]["UsersAttended"].add(user_id2)
         self.assertEqual(grab_db(self.dynamodb_client), expected)
 
 
