@@ -208,7 +208,7 @@ class TestFilmBot(unittest.TestCase):
                 "FilmName": "FilmName1",
                 "DiscordUserID": "UserA",
                 "CastVotes": 0,
-                "AttendanceVotes": 7,
+                "UsersAttended": set(["A", "B", "C", "D", "E", "F", "G"]),
                 "DateNominated": d.isoformat(),
             },
             {
@@ -216,7 +216,7 @@ class TestFilmBot(unittest.TestCase):
                 "FilmName": "FilmName2",
                 "DiscordUserID": "UserB",
                 "CastVotes": 3,
-                "AttendanceVotes": 3,
+                "UsersAttended": set(["A", "B", "C"]),
                 "DateNominated": d.isoformat(),
             },
             {
@@ -224,7 +224,7 @@ class TestFilmBot(unittest.TestCase):
                 "FilmName": "FilmName3",
                 "DiscordUserID": "UserC",
                 "CastVotes": 2,
-                "AttendanceVotes": 4,
+                "UsersAttended": set(["A", "B", "C", "UserC"]),
                 "DateNominated": d.isoformat(),
             },
             {
@@ -232,15 +232,23 @@ class TestFilmBot(unittest.TestCase):
                 "FilmName": "FilmName4",
                 "DiscordUserID": "UserD",
                 "CastVotes": 2,
-                "AttendanceVotes": 4,
+                "UsersAttended": set(["A", "B", "C", "D"]),
+                "DateNominated": d.isoformat(),
+            },
+            {
+                "SK": "FILM.NOMINATED.film5",
+                "FilmName": "FilmName5",
+                "DiscordUserID": "UserE",
+                "CastVotes": 2,
+                "UsersAttended": set(["A", "B", "C", "D"]),
                 "DateNominated": (d + timedelta(seconds=1)).isoformat(),
             },
             {
-                "SK": f"FILM.WATCHED.{d.isoformat()}.film5",
-                "FilmName": "FilmName5",
-                "DiscordUserID": "UserE",
+                "SK": f"FILM.WATCHED.{d.isoformat()}.film6",
+                "FilmName": "FilmName6",
+                "DiscordUserID": "UserF",
                 "CastVotes": 10,
-                "AttendanceVotes": 10,
+                "UsersAttended": set(["A", "B", "C", "D", "E", "F", "G", "H", "I"]),
                 "DateNominated": d.isoformat(),
             },
         ]
@@ -252,7 +260,7 @@ class TestFilmBot(unittest.TestCase):
                 "FilmName": "FilmName1",
                 "DiscordUserID": "UserA",
                 "CastVotes": 0,
-                "AttendanceVotes": 7,
+                "UsersAttended": set(["A", "B", "C", "D", "E", "F", "G"]),
                 "DateNominated": d.isoformat(),
             },
             {
@@ -261,16 +269,7 @@ class TestFilmBot(unittest.TestCase):
                 "FilmName": "FilmName2",
                 "DiscordUserID": "UserB",
                 "CastVotes": 3,
-                "AttendanceVotes": 3,
-                "DateNominated": d.isoformat(),
-            },
-            {
-                "SK": "FILM.NOMINATED.film3",
-                "FilmID": "film3",
-                "FilmName": "FilmName3",
-                "DiscordUserID": "UserC",
-                "CastVotes": 2,
-                "AttendanceVotes": 4,
+                "UsersAttended": set(["A", "B", "C"]),
                 "DateNominated": d.isoformat(),
             },
             {
@@ -279,8 +278,26 @@ class TestFilmBot(unittest.TestCase):
                 "FilmName": "FilmName4",
                 "DiscordUserID": "UserD",
                 "CastVotes": 2,
-                "AttendanceVotes": 4,
+                "UsersAttended": set(["A", "B", "C", "D"]),
+                "DateNominated": d.isoformat(),
+            },
+            {
+                "SK": "FILM.NOMINATED.film5",
+                "FilmID": "film5",
+                "FilmName": "FilmName5",
+                "DiscordUserID": "UserE",
+                "CastVotes": 2,
+                "UsersAttended": set(["A", "B", "C", "D"]),
                 "DateNominated": (d + timedelta(seconds=1)).isoformat(),
+            },
+            {
+                "SK": "FILM.NOMINATED.film3",
+                "FilmID": "film3",
+                "FilmName": "FilmName3",
+                "DiscordUserID": "UserC",
+                "CastVotes": 2,
+                "UsersAttended": set(["A", "B", "C", "UserC"]),
+                "DateNominated": d.isoformat(),
             },
         ]
 
@@ -309,7 +326,7 @@ class TestFilmBot(unittest.TestCase):
                 "FilmName": "FilmName1",
                 "DiscordUserID": "UserA",
                 "CastVotes": 0,
-                "AttendanceVotes": 7,
+                "UsersAttended": set(["A", "B", "C", "D", "E", "F", "G"]),
                 "DateNominated": d.isoformat(),
             },
             {
@@ -317,7 +334,7 @@ class TestFilmBot(unittest.TestCase):
                 "FilmName": "FilmName2",
                 "DiscordUserID": "UserB",
                 "CastVotes": 3,
-                "AttendanceVotes": 3,
+                "UsersAttended": set(["A", "B", "C"]),
                 "DateNominated": (d + timedelta(seconds=2)).isoformat(),
             },
             {
@@ -325,7 +342,7 @@ class TestFilmBot(unittest.TestCase):
                 "FilmName": "FilmName3",
                 "DiscordUserID": "UserC",
                 "CastVotes": 2,
-                "AttendanceVotes": 4,
+                "UsersAttended": set(["A", "B", "C", "D"]),
                 "DateNominated": (d + timedelta(seconds=1)).isoformat(),
             },
             {
@@ -333,7 +350,7 @@ class TestFilmBot(unittest.TestCase):
                 "FilmName": "FilmName4",
                 "DiscordUserID": "UserD",
                 "CastVotes": 10,
-                "AttendanceVotes": 10,
+                "UsersAttended": set(["A", "B", "C", "D", "E", "F", "G", "H", "I"]),
                 "DateNominated": (d + timedelta(seconds=3)).isoformat(),
             },
         ]
@@ -344,7 +361,7 @@ class TestFilmBot(unittest.TestCase):
                 "FilmName": "FilmName1",
                 "DiscordUserID": "UserA",
                 "CastVotes": 0,
-                "AttendanceVotes": 7,
+                "UsersAttended": set(["A", "B", "C", "D", "E", "F", "G"]),
                 "DateNominated": d.isoformat(),
             },
             {
@@ -352,7 +369,7 @@ class TestFilmBot(unittest.TestCase):
                 "FilmName": "FilmName3",
                 "DiscordUserID": "UserC",
                 "CastVotes": 2,
-                "AttendanceVotes": 4,
+                "UsersAttended": set(["A", "B", "C", "D"]),
                 "DateNominated": (d + timedelta(seconds=1)).isoformat(),
             },
             {
@@ -360,7 +377,7 @@ class TestFilmBot(unittest.TestCase):
                 "FilmName": "FilmName2",
                 "DiscordUserID": "UserB",
                 "CastVotes": 3,
-                "AttendanceVotes": 3,
+                "UsersAttended": set(["A", "B", "C"]),
                 "DateNominated": (d + timedelta(seconds=2)).isoformat(),
             },
             {
@@ -368,7 +385,7 @@ class TestFilmBot(unittest.TestCase):
                 "FilmName": "FilmName4",
                 "DiscordUserID": "UserD",
                 "CastVotes": 10,
-                "AttendanceVotes": 10,
+                "UsersAttended": set(["A", "B", "C", "D", "E", "F", "G", "H", "I"]),
                 "DateNominated": (d + timedelta(seconds=3)).isoformat(),
             },
         ]
@@ -409,7 +426,7 @@ class TestFilmBot(unittest.TestCase):
                         "FilmName": film_name1,
                         "DiscordUserID": user_id1,
                         "CastVotes": 0,
-                        "AttendanceVotes": 0,
+                        "UsersAttended": set(),
                         "DateNominated": time1.isoformat(),
                     },
                     {
@@ -449,7 +466,7 @@ class TestFilmBot(unittest.TestCase):
                     "FilmName": film_name1,
                     "DiscordUserID": user_id1,
                     "CastVotes": 0,
-                    "AttendanceVotes": 0,
+                    "UsersAttended": set(),
                     "DateNominated": time1.isoformat(),
                 },
                 {
@@ -457,7 +474,7 @@ class TestFilmBot(unittest.TestCase):
                     "FilmName": film_name2,
                     "DiscordUserID": user_id2,
                     "CastVotes": 0,
-                    "AttendanceVotes": 0,
+                    "UsersAttended": set(),
                     "DateNominated": time2.isoformat(),
                 },
                 {
@@ -508,7 +525,7 @@ class TestFilmBot(unittest.TestCase):
                         "FilmName": film_name1,
                         "DiscordUserID": user_id1,
                         "CastVotes": 0,
-                        "AttendanceVotes": 0,
+                        "UsersAttended": set(),
                         "DateNominated": time1.isoformat(),
                     },
                     {
@@ -516,7 +533,7 @@ class TestFilmBot(unittest.TestCase):
                         "FilmName": film_name2,
                         "DiscordUserID": user_id2,
                         "CastVotes": 0,
-                        "AttendanceVotes": 0,
+                        "UsersAttended": set(),
                         "DateNominated": time2.isoformat(),
                     },
                     {
@@ -538,7 +555,7 @@ class TestFilmBot(unittest.TestCase):
                         "FilmName": film_name1,
                         "DiscordUserID": user_id1,
                         "CastVotes": 0,
-                        "AttendanceVotes": 0,
+                        "UsersAttended": set(),
                         "DateNominated": time1.isoformat(),
                     },
                     {
@@ -572,7 +589,7 @@ class TestFilmBot(unittest.TestCase):
                     "FilmName": "My Film 1",
                     "DiscordUserID": user_id1,
                     "CastVotes": 0,
-                    "AttendanceVotes": 0,
+                    "UsersAttended": set(),
                     "DateNominated": d.isoformat(),
                 },
                 {
@@ -580,7 +597,7 @@ class TestFilmBot(unittest.TestCase):
                     "FilmName": "My Film 2",
                     "DiscordUserID": user_id2,
                     "CastVotes": 0,
-                    "AttendanceVotes": 0,
+                    "UsersAttended": set(),
                     "DateNominated": d.isoformat(),
                 },
                 {
@@ -588,7 +605,7 @@ class TestFilmBot(unittest.TestCase):
                     "FilmName": "My Film 3",
                     "DiscordUserID": user_id3,
                     "CastVotes": 0,
-                    "AttendanceVotes": 0,
+                    "UsersAttended": set(),
                     "DateNominated": d.isoformat(),
                 },
                 {
@@ -596,7 +613,7 @@ class TestFilmBot(unittest.TestCase):
                     "FilmName": "My Film 4 (Watched)",
                     "DiscordUserID": user_id1,
                     "CastVotes": 0,
-                    "AttendanceVotes": 0,
+                    "UsersAttended": set(),
                     "DateNominated": ages_ago.isoformat(),
                 },
                 {
@@ -604,7 +621,7 @@ class TestFilmBot(unittest.TestCase):
                     "FilmName": "My Film 5 (Watched)",
                     "DiscordUserID": user_id1,
                     "CastVotes": 0,
-                    "AttendanceVotes": 0,
+                    "UsersAttended": set(),
                     "DateNominated": d.isoformat(),
                 },
                 {
