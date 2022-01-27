@@ -17,7 +17,7 @@ FILM_SK = "SK"
 FILM_FilmName = "FilmName"
 FILM_DiscordUserID = "DiscordUserID"
 FILM_CastVotes = "CastVotes"
-FILM_AttendanceVotes = "AttendanceVotes"
+FILM_UsersAttended = "UsersAttended"
 FILM_DateNominated = "DateNominated"
 
 
@@ -40,6 +40,8 @@ def keyed(v):
         return {"N": str(v)}
     elif isinstance(v, str):
         return {"S": v}
+    elif isinstance(v, set):
+        return {"SS": list(v)}
     elif v is None:
         return {"NULL": True}
     else:
@@ -65,6 +67,8 @@ def unkeyed(v):
             return value
         elif type_name == "N":
             return int(value)
+        elif type_name == "SS":
+            return set(value)
         elif type_name == "NULL":
             return None
         else:
@@ -80,6 +84,10 @@ def unkey_map(map):
         result[key] = unkeyed(map[key])
     return result
 
+
+def count_attendence(film):
+    nominator_attended = film[FILM_DiscordUserID] in film[FILM_UsersAttended]
+    return len(film[FILM_UsersAttended]) - int(nominator_attended)
 
 class VotingStatus(Enum):
     UNCOMPLETE = 0
@@ -172,7 +180,7 @@ class FilmBot:
         return sorted(
             nominated,
             key=lambda n: [
-                -n[FILM_CastVotes] - n[FILM_AttendanceVotes],
+                -n[FILM_CastVotes] - count_attendence(n),
                 -n[FILM_CastVotes],
                 n[FILM_DateNominated],
             ],
@@ -257,7 +265,7 @@ class FilmBot:
                                 FILM_FilmName: {"S": FilmName},
                                 FILM_DiscordUserID: {"S": DiscordUserID},
                                 FILM_CastVotes: {"N": "0"},
-                                FILM_AttendanceVotes: {"N": "0"},
+                                FILM_UsersAttended: {"SS": [] },
                                 FILM_DateNominated: {
                                     "S": DateTime.isoformat()
                                 },
