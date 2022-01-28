@@ -45,5 +45,6 @@ The records with sort key starting with `"FILM.*"` contains the following fields
   * `FilmName` is a string representation of the film's name
   * `DiscordUserID` is a string matching the users's Discord ID who nominated this film
   * `CastVotes` is a non-negative integer representing the number of votes cast for this film
+  * `AttendanceVotes` is a non-negative integer representing the number of attendance votes for the user who nominated this film
   * `UsersAttended` is a set containing the user's Discord IDs of those who have attended
   * `DateNominated` is an ISO 8601 formatting string of the UTC datetime this film was nominated
