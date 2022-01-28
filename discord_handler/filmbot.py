@@ -17,6 +17,7 @@ FILM_SK = "SK"
 FILM_FilmName = "FilmName"
 FILM_DiscordUserID = "DiscordUserID"
 FILM_CastVotes = "CastVotes"
+FILM_AttendanceVotes = "AttendanceVotes"
 FILM_UsersAttended = "UsersAttended"
 FILM_DateNominated = "DateNominated"
 
@@ -181,7 +182,7 @@ class FilmBot:
         return sorted(
             nominated,
             key=lambda n: [
-                -n[FILM_CastVotes] - count_attendence(n),
+                -n[FILM_CastVotes] - n[FILM_AttendanceVotes],
                 -n[FILM_CastVotes],
                 n[FILM_DateNominated],
             ],
@@ -265,6 +266,7 @@ class FilmBot:
                                 FILM_FilmName: {"S": FilmName},
                                 FILM_DiscordUserID: {"S": DiscordUserID},
                                 FILM_CastVotes: {"N": "0"},
+                                FILM_AttendanceVotes: {"N": "0"},
                                 FILM_UsersAttended: {"SS": []},
                                 FILM_DateNominated: {
                                     "S": DateTime.isoformat()
@@ -456,9 +458,9 @@ class FilmBot:
                         },
                         "ExpressionAttributeValues": {
                             ":Null": {"NULL": True},
-                            ":PreviousNomination": {
-                                "S": u[1][USER_NominatedFilmID]
-                            },
+                            ":PreviousNomination": keyed(
+                                u[1][USER_NominatedFilmID]
+                            ),
                         },
                         # No need to check that the user exists
                         "ConditionExpression": f"{USER_NominatedFilmID} = :PreviousNomination",
@@ -545,7 +547,11 @@ class FilmBot:
             latest_watched_film[FILM_SK]["S"]
         )
         watch_time = datetime.fromisoformat(watch_time)
+
         # TODO: Get runtime from IMDB and use this
+        # Note that this must never be greater than the watch cooldown
+        # period (currently 24 hours) otherwise it would be possible to
+        # have several films watched concurrently
         end_time = watch_time + timedelta(hours=4)
 
         # We shouldn't be recording attendance before we started watching a
@@ -579,6 +585,7 @@ class FilmBot:
                 }
             },
             {
+                # Add our user to the set of those who attended
                 "Update": {
                     "TableName": TABLE_NAME,
                     "Key": {
@@ -592,5 +599,32 @@ class FilmBot:
                 }
             },
         ]
+
+        # Add an attendance vote if we weren't the user who nominated the film
+        # and we have a nomination.  We must check both as we could either nominate
+        # straight after we start watching our film or we could have failed to nominate
+        # a new film before a second film has started being watched
+        if (
+            latest_watched_film[FILM_DiscordUserID]["S"]
+            != extract_SK(user[USER_SK])
+            and user[USER_NominatedFilmID] is not None
+        ):
+            items.append(
+                {
+                    "Update": {
+                        "TableName": TABLE_NAME,
+                        "Key": {
+                            FILM_PK: {"S": self.guildID},
+                            FILM_SK: {
+                                "S": f"FILM.NOMINATED.{user[USER_NominatedFilmID]}"
+                            },
+                        },
+                        "ExpressionAttributeValues": {
+                            ":One": {"N": "1"},
+                        },
+                        "UpdateExpression": f"ADD {FILM_AttendanceVotes} :One",
+                    }
+                }
+            )
 
         self.client.transact_write_items(TransactItems=items)
