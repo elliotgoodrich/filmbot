@@ -6,8 +6,11 @@
         {
             "label": "Run Tests",
             "type": "shell",
-            "command": "python discord_handler/test_filmbot.py -v",
+            "command": "python -m unittest discover -v",
             "problemMatcher": [],
+            "options": {
+                "cwd": "discord_handler"
+            },
             "group": {
                 "kind": "build",
                 "isDefault": true
