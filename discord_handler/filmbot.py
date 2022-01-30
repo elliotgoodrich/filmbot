@@ -23,11 +23,11 @@ FILM_DateNominated = "DateNominated"
 
 
 def extract_SK(sortKeyValue):
-    return sortKeyValue.split(".")[-1]
+    return sortKeyValue.split("#")[-1]
 
 
 def extract_watched(sortKeyValue):
-    FILM, WATCHED, watch_time, film_id = sortKeyValue.split(".")
+    FILM, WATCHED, watch_time, film_id = sortKeyValue.split("#")
     assert FILM == "FILM"
     assert WATCHED == "WATCHED"
     return watch_time, film_id
@@ -86,14 +86,14 @@ def unkey_map(map):
     return result
 
 
-def count_attendence(film):
-    nominator_attended = film[FILM_DiscordUserID] in film[FILM_UsersAttended]
-    return len(film[FILM_UsersAttended]) - int(nominator_attended)
-
-
 class VotingStatus(Enum):
     UNCOMPLETE = 0
     COMPLETE = 1
+
+
+class AttendanceStatus(Enum):
+    REGISTERED = 0
+    ALREADY_REGISTERED = 1
 
 
 class FilmBot:
@@ -118,7 +118,7 @@ class FilmBot:
             "TableName": TABLE_NAME,
             "ExpressionAttributeValues": {
                 ":GuildID": {"S": self.guildID},
-                ":UserPrefix": {"S": "USER."},
+                ":UserPrefix": {"S": "USER#"},
             },
             "KeyConditionExpression": (
                 f"{USER_PK} = :GuildID AND "
@@ -152,7 +152,7 @@ class FilmBot:
             "TableName": TABLE_NAME,
             "ExpressionAttributeValues": {
                 ":GuildID": {"S": self.guildID},
-                ":FilmPrefix": {"S": "FILM.NOMINATED."},
+                ":FilmPrefix": {"S": "FILM#NOMINATED#"},
             },
             "KeyConditionExpression": (
                 f"{FILM_PK} = :GuildID AND "
@@ -197,7 +197,7 @@ class FilmBot:
             "TableName": TABLE_NAME,
             "ExpressionAttributeValues": {
                 ":GuildID": {"S": self.guildID},
-                ":FilmPrefix": {"S": "FILM."},
+                ":FilmPrefix": {"S": "FILM#"},
             },
             "KeyConditionExpression": (
                 f"{FILM_PK} = :GuildID AND "
@@ -237,7 +237,7 @@ class FilmBot:
                             "TableName": TABLE_NAME,
                             "Key": {
                                 USER_PK: {"S": self.guildID},
-                                USER_SK: {"S": f"USER.{DiscordUserID}"},
+                                USER_SK: {"S": f"USER#{DiscordUserID}"},
                             },
                             "ExpressionAttributeValues": {
                                 ":NewFilmID": {"S": NewFilmID},
@@ -251,9 +251,9 @@ class FilmBot:
                             # These should both be Null at this point as we can only nominate after we
                             # watch a film and these are cleared
                             "UpdateExpression": (
-                                f"SET {USER_NominatedFilmID} = :NewFilmID "
-                                f"SET {USER_VoteID} = :Null "
-                                f"SET {USER_AttendanceVoteID} = :Null"
+                                f"SET {USER_NominatedFilmID} = :NewFilmID, "
+                                f"{USER_VoteID} = :Null, "
+                                f"{USER_AttendanceVoteID} = :Null"
                             ),
                         }
                     },
@@ -262,12 +262,13 @@ class FilmBot:
                             "TableName": TABLE_NAME,
                             "Item": {
                                 FILM_PK: {"S": self.guildID},
-                                FILM_SK: {"S": f"FILM.NOMINATED.{NewFilmID}"},
+                                FILM_SK: {"S": f"FILM#NOMINATED#{NewFilmID}"},
                                 FILM_FilmName: {"S": FilmName},
                                 FILM_DiscordUserID: {"S": DiscordUserID},
                                 FILM_CastVotes: {"N": "0"},
                                 FILM_AttendanceVotes: {"N": "0"},
-                                FILM_UsersAttended: {"SS": []},
+                                # Empty string sets are not allowed so we have to use NULL
+                                FILM_UsersAttended: {"NULL": True},
                                 FILM_DateNominated: {
                                     "S": DateTime.isoformat()
                                 },
@@ -327,7 +328,7 @@ class FilmBot:
                     "TableName": TABLE_NAME,
                     "Key": {
                         USER_PK: {"S": self.guildID},
-                        USER_SK: {"S": f"USER.{DiscordUserID}"},
+                        USER_SK: {"S": f"USER#{DiscordUserID}"},
                     },
                     "ExpressionAttributeValues": {
                         ":NewFilmID": {"S": FilmID},
@@ -346,7 +347,7 @@ class FilmBot:
                     "TableName": TABLE_NAME,
                     "Key": {
                         FILM_PK: {"S": self.guildID},
-                        FILM_SK: {"S": f"FILM.NOMINATED.{FilmID}"},
+                        FILM_SK: {"S": f"FILM#NOMINATED#{FilmID}"},
                     },
                     "ExpressionAttributeValues": {
                         ":One": {"N": "1"},
@@ -365,7 +366,7 @@ class FilmBot:
                         "TableName": TABLE_NAME,
                         "Key": {
                             FILM_PK: {"S": self.guildID},
-                            FILM_SK: {"S": f"FILM.NOMINATED.{previous_vote}"},
+                            FILM_SK: {"S": f"FILM#NOMINATED#{previous_vote}"},
                         },
                         "ExpressionAttributeValues": {
                             ":One": {"N": "1"},
@@ -393,34 +394,44 @@ class FilmBot:
             else VotingStatus.UNCOMPLETE
         )
 
-    def start_watching_film(self, *, FilmID, DateTime):
+    def start_watching_film(self, *, FilmID, PresentUserIDs, DateTime):
         """
-        Attempt to record that we're watching the specified `FilmID`.
+        Attempt to record that we're watching the specified `FilmID` and
+        record an attendance vote for each user in the `PresentUserIDs` array
         Also clear out all cast votes from all users and clear out the
         user's nomination who had previously nominated `FilmID`.  Throw
-        an exception if `FilmID` isn't correct or less than 24 hours has
-        passed since watching the last film.
+        an exception if `FilmID` isn't correct, less than 24 hours has
+        passed since watching the last film, or `PresentUserIDs` is empty.
         """
+
+        # At least one user must be present to start watching a film"
+        assert PresentUserIDs
 
         response = self.client.get_item(
             TableName=TABLE_NAME,
             Key={
                 FILM_PK: {"S": self.guildID},
-                FILM_SK: {"S": f"FILM.NOMINATED.{FilmID}"},
+                FILM_SK: {"S": f"FILM#NOMINATED#{FilmID}"},
             },
         )
+
         if "Item" not in response:
-            raise UserError("Unknown film")
+            raise UserError(f"There is no nominated film with that ({FilmID})")
+
+        # Check to see all user IDs are valid
+        all_users = self.get_users()
+        for user in PresentUserIDs:
+            assert user in all_users
 
         film = response["Item"]
-        user_id = film[FILM_DiscordUserID]["S"]
+        nominator_user_id = film[FILM_DiscordUserID]["S"]
 
         # Get the last film watched and see if enough time has passed
         response = self.client.query(
             TableName=TABLE_NAME,
             ExpressionAttributeValues={
                 ":GuildID": {"S": self.guildID},
-                ":WatchedPrefix": {"S": "FILM.WATCHED."},
+                ":WatchedPrefix": {"S": "FILM#WATCHED#"},
             },
             KeyConditionExpression=(
                 f"{FILM_PK} = :GuildID AND "
@@ -439,51 +450,85 @@ class FilmBot:
                     "At least 24 hours must pass before watching films"
                 )
 
-        # Clear out the cast and attendance votes
-        update_expr = (
-            f"SET {USER_VoteID} = :Null SET {USER_AttendanceVoteID} = :Null"
-        )
-        update_and_clear_expr = (
-            update_expr + f" SET {USER_NominatedFilmID} = :Null"
-        )
+        items = []
 
-        items = list(
-            map(
-                lambda u: {
+        for user_id in all_users:
+            # Either reset our vote if we aren't present, or set it to
+            # the current film ID if we are
+            attendance_vote = (
+                {"S": FilmID} if user_id in PresentUserIDs else {"NULL": True}
+            )
+
+            user = all_users[user_id]
+
+            # Clear our out votes
+            update_exprs = [
+                f"{USER_VoteID} = :Null",
+                f"{USER_AttendanceVoteID} = :AttendanceVote",
+            ]
+
+            # If this was our film, clear our nomination
+            if user_id == nominator_user_id:
+                update_exprs.append(f"{USER_NominatedFilmID} = :Null")
+
+            items.append(
+                {
                     "Update": {
                         "TableName": TABLE_NAME,
                         "Key": {
                             USER_PK: {"S": self.guildID},
-                            USER_SK: {"S": f"USER.{u[0]}"},
+                            USER_SK: {"S": f"USER#{user_id}"},
                         },
                         "ExpressionAttributeValues": {
                             ":Null": {"NULL": True},
                             ":PreviousNomination": keyed(
-                                u[1][USER_NominatedFilmID]
+                                user[USER_NominatedFilmID]
                             ),
+                            ":AttendanceVote": attendance_vote,
                         },
-                        # No need to check that the user exists
+                        # We have already checked that the user exists
                         "ConditionExpression": f"{USER_NominatedFilmID} = :PreviousNomination",
-                        "UpdateExpression": (
-                            update_and_clear_expr
-                            if u[0] == user_id
-                            else update_expr
-                        ),
+                        "UpdateExpression": "SET " + ", ".join(update_exprs),
                     }
-                },
-                self.get_users().items(),
+                }
             )
-        )
+
+            # Add an attendance vote for all present users as long
+            # as we weren't the one who nominated the film being
+            # watched and we also have a nominated film
+            if (
+                user_id in PresentUserIDs
+                and user_id != nominator_user_id
+                and user[USER_NominatedFilmID] is not None
+            ):
+                items.append(
+                    {
+                        "Update": {
+                            "TableName": TABLE_NAME,
+                            "Key": {
+                                FILM_PK: {"S": self.guildID},
+                                FILM_SK: {
+                                    "S": f"FILM#NOMINATED#{user[USER_NominatedFilmID]}"
+                                },
+                            },
+                            "ExpressionAttributeValues": {
+                                ":One": {"N": "1"},
+                            },
+                            "UpdateExpression": f"ADD {FILM_AttendanceVotes} :One",
+                        }
+                    }
+                )
 
         # Delete the film entry and reenter it with the `NOMINATED` prefix + Datetime
-        film[FILM_SK] = {"S": f"FILM.WATCHED.{DateTime.isoformat()}.{FilmID}"}
+        film[FILM_SK] = {"S": f"FILM#WATCHED#{DateTime.isoformat()}#{FilmID}"}
+        film[FILM_UsersAttended] = {"SS": PresentUserIDs}
         items += [
             {
                 "Delete": {
                     "TableName": TABLE_NAME,
                     "Key": {
                         FILM_PK: {"S": self.guildID},
-                        FILM_SK: {"S": f"FILM.NOMINATED.{FilmID}"},
+                        FILM_SK: {"S": f"FILM#NOMINATED#{FilmID}"},
                     },
                     # Make sure the film still exists to defend against this
                     # function being called multiple times in quick succession
@@ -509,7 +554,7 @@ class FilmBot:
             TableName=TABLE_NAME,
             Key={
                 USER_PK: {"S": self.guildID},
-                USER_SK: {"S": f"USER.{DiscordUserID}"},
+                USER_SK: {"S": f"USER#{DiscordUserID}"},
             },
         )
         if "Item" not in response:
@@ -521,7 +566,7 @@ class FilmBot:
 
         # Do nothing if the user has already recorded their attendance
         if user[USER_AttendanceVoteID] is not None:
-            return
+            return AttendanceStatus.ALREADY_REGISTERED
 
         # Get the last film watched and see if we fall within the correct
         # time frame
@@ -529,7 +574,7 @@ class FilmBot:
             TableName=TABLE_NAME,
             ExpressionAttributeValues={
                 ":GuildID": {"S": self.guildID},
-                ":WatchedPrefix": {"S": "FILM.WATCHED."},
+                ":WatchedPrefix": {"S": "FILM#WATCHED#"},
             },
             KeyConditionExpression=(
                 f"{FILM_PK} = :GuildID AND "
@@ -542,10 +587,8 @@ class FilmBot:
         if not response["Items"]:
             raise UserError("There are no films that have been watched")
 
-        latest_watched_film = response["Items"][0]
-        watch_time, film_id = extract_watched(
-            latest_watched_film[FILM_SK]["S"]
-        )
+        latest_watched_film = unkey_map(response["Items"][0])
+        watch_time, film_id = extract_watched(latest_watched_film[FILM_SK])
         watch_time = datetime.fromisoformat(watch_time)
 
         # TODO: Get runtime from IMDB and use this
@@ -590,7 +633,7 @@ class FilmBot:
                     "TableName": TABLE_NAME,
                     "Key": {
                         FILM_PK: {"S": self.guildID},
-                        FILM_SK: latest_watched_film[FILM_SK],
+                        FILM_SK: {"S": latest_watched_film[FILM_SK]},
                     },
                     "ExpressionAttributeValues": {
                         ":User": {"SS": [DiscordUserID]},
@@ -605,7 +648,7 @@ class FilmBot:
         # straight after we start watching our film or we could have failed to nominate
         # a new film before a second film has started being watched
         if (
-            latest_watched_film[FILM_DiscordUserID]["S"]
+            latest_watched_film[FILM_DiscordUserID]
             != extract_SK(user[USER_SK])
             and user[USER_NominatedFilmID] is not None
         ):
@@ -616,7 +659,7 @@ class FilmBot:
                         "Key": {
                             FILM_PK: {"S": self.guildID},
                             FILM_SK: {
-                                "S": f"FILM.NOMINATED.{user[USER_NominatedFilmID]}"
+                                "S": f"FILM#NOMINATED#{user[USER_NominatedFilmID]}"
                             },
                         },
                         "ExpressionAttributeValues": {
@@ -626,5 +669,5 @@ class FilmBot:
                     }
                 }
             )
-
         self.client.transact_write_items(TransactItems=items)
+        return AttendanceStatus.REGISTERED

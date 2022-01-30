@@ -16,9 +16,9 @@ called "PK" and a sort key called "SK".
 The partition key will be Discord Guild ID.
 
 The sort key will take one of the following forms:
-  1. `"USER." + DiscordUserID`
-  2. `"FILM.NOMINATED." + FilmID`
-  3. `"FILM.WATCHED." + DateTimeStarted + "." + FilmID`
+  1. `"USER#" + DiscordUserID`
+  2. `"FILM#NOMINATED#" + FilmID`
+  3. `"FILM#WATCHED#" + DateTimeStarted + "." + FilmID`
 
 Where:
   * `DiscordUserID` is the user's Discord ID (supplied by Discord)
@@ -27,17 +27,17 @@ Where:
      film was started being watched
 
 For example:
-  1. `"USER.16393729388392"`
-  2. `"FILM.NOMINATED.76988c8a-a15d-48a9-8805-5c7f1723e298"`
-  3. `"FILM.WATCHED.2022-01-19T21:35:58Z.76988c8a-a15d-48a9-8805-5c7f1723e298"`
+  1. `"USER#16393729388392"`
+  2. `"FILM#NOMINATED#76988c8a-a15d-48a9-8805-5c7f1723e298"`
+  3. `"FILM#WATCHED#2022-01-19T21:35:58Z.76988c8a-a15d-48a9-8805-5c7f1723e298"`
 
-### "USER.*" Record Format
+### "USER#*" Record Format
 
-The records with sort key starting with `"USER.*"` contains the following
+The records with sort key starting with `"USER#*"` contains the following
 fields:
-  * `NominatedFilmID` is a string matching a `"FILM.NOMINATED.*"` sort key that represents this users nominated film, or `NULL` if this user has no currently nominated film
-  * `VoteID` is a string matching a `"FILM.NOMINATED.*"` sort key that represents this user's voted film, or `NULL` if this user has not voted yet in this round
-  * `AttendanceVoteID` is a string matching a `"FILM.WATCHED.*.*"` sort key that represents this user's attendance vote for the last watched film, or `NULL` if this user did not watch the latest film
+  * `NominatedFilmID` is a string matching a `"FILM#NOMINATED#*"` sort key that represents this users nominated film, or `NULL` if this user has no currently nominated film
+  * `VoteID` is a string matching a `"FILM#NOMINATED#*"` sort key that represents this user's voted film, or `NULL` if this user has not voted yet in this round
+  * `AttendanceVoteID` is a string matching a `"FILM#WATCHED#*.*"` sort key that represents this user's attendance vote for the last watched film, or `NULL` if this user did not watch the latest film
 
 ### "FILM.*" Record Format
 
@@ -46,5 +46,5 @@ The records with sort key starting with `"FILM.*"` contains the following fields
   * `DiscordUserID` is a string matching the users's Discord ID who nominated this film
   * `CastVotes` is a non-negative integer representing the number of votes cast for this film
   * `AttendanceVotes` is a non-negative integer representing the number of attendance votes for the user who nominated this film
-  * `UsersAttended` is a set containing the user's Discord IDs of those who have attended
+  * `UsersAttended` is `NULL` for unwatched films or a non-empty set containing the user's Discord IDs of those who have attended (DynamoDB does not support empty string sets)
   * `DateNominated` is an ISO 8601 formatting string of the UTC datetime this film was nominated
