@@ -12,10 +12,12 @@ jobs:
       with:
         python-version: '3.8' # Same as used in AWS Lambda
     - name: Install dependencies
+      working-directory: ./discord_handler
       run: |
         python -m pip install --upgrade pip
-        pip install -r discord_handler/requirements.txt
-        pip install -r discord_handler/dev_requirements.txt
+        pip install -r requirements.txt
+        pip install -r dev_requirements.txt
     - name: Run tests
+      working-directory: ./discord_handler
       run: |
-        python discord_handler/test_filmbot.py -v
+        python -m unittest discover -v
