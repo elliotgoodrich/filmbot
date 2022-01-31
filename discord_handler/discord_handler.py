@@ -3,7 +3,6 @@ from filmbot import FilmBot, VotingStatus, AttendanceStatus
 from UserError import UserError
 from datetime import datetime
 from uuid import uuid1
-from enum import Enum
 
 PING = 1
 APPLICATION_COMMAND = 2
@@ -16,6 +15,8 @@ DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE = 5
 DEFERRED_UPDATE_MESSAGE = 6
 UPDATE_MESSAGE = 7
 APPLICATION_COMMAND_AUTOCOMPLETE_RESULT = 8
+
+EPHEMERAL_FLAG = 64
 
 
 def make_client(region_name):
@@ -72,6 +73,7 @@ def handle_application_command(event, region_name):
             "type": CHANNEL_MESSAGE_WITH_SOURCE,
             "data": {
                 "content": "Vote successfully recorded",
+                "flags": EPHEMERAL_FLAG,
             },
         }
 
