@@ -12,6 +12,8 @@
 # of the Discord Application
 
 import os
+import json
+from discord_handler import handle_discord
 from nacl.signing import VerifyKey
 from nacl.exceptions import BadSignatureError
 
@@ -31,15 +33,8 @@ def verify_signature(event):
 
 
 def lambda_handler(event, context):
-    print(f"event {event}")
+    print(f"in={json.dumps(event)}")
     verify_signature(event)
-    body = event["body-json"]
-
-    if body["type"] == 1:
-        print("ping")
-        return {"type": 1}
-
-    return {
-        "type": MESSAGE_WITH_SOURCE,
-        "data": {"content": "Congrats on sending your command!"},
-    }
+    response = handle_discord(event, os.environ["AWS_REGION"])
+    print(f"out={json.dumps(response)}")
+    return response
