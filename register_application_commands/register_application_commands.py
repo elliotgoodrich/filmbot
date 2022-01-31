@@ -33,6 +33,7 @@ commands = [
                 "description": "The film you want to vote for",
                 "type": 3,
                 "required": True,
+                "autocomplete": True,
             }
         ],
     },
@@ -59,8 +60,14 @@ commands = [
                 "description": "The film currently being watched",
                 "type": 3,
                 "required": True,
+                "autocomplete": True,
             }
         ],
+    },
+    {
+        "name": "here",
+        "type": 1,
+        "description": "Register attendance for the film currently being watched",
     },
 ]
 
