@@ -27,8 +27,8 @@ def films_to_choices(films):
     return list(
         map(
             lambda n: {
-                "name": n["FilmName"],
-                "value": n["FilmID"],
+                "name": n.FilmName,
+                "value": n.FilmID,
             },
             films,
         )
