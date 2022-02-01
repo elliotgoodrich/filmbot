@@ -113,16 +113,16 @@ def handle_application_command(event, region_name):
 
     elif command == "watch":
         film_id = body["data"]["options"][0]["value"]
-        film_name = filmbot.start_watching_film(
+        film = filmbot.start_watching_film(
             FilmID=film_id, DateTime=now, PresentUserIDs=[user_id]
         )
         return {
             "type": CHANNEL_MESSAGE_WITH_SOURCE,
             "data": {
                 "content": (
-                    f"Started watching {film_name}!\n\n"
+                    f"Started watching {film.FilmName}!\n\n"
                     + f"Everyone other than <@{user_id}> should record their attendance using `/here`.\n\n"
-                    + f"<@{user_id}> can now nominated their next suggestion with `/nominate`"
+                    + f"<@{film.DiscordUserID}> can now nominated their next suggestion with `/nominate`"
                 )
             },
         }

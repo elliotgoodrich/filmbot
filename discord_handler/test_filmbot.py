@@ -856,7 +856,16 @@ class TestFilmBot(unittest.TestCase):
                     DateTime=good_time,
                     PresentUserIDs=[user_id1, user_id2, user_id3],
                 ),
-                "My Film 1",
+                Film(
+                    FilmID=film_id1,
+                    FilmName="My Film 1",
+                    DiscordUserID=user_id1,
+                    CastVotes=1,
+                    AttendanceVotes=0,
+                    UsersAttended=set([user_id1, user_id2, user_id3]),
+                    DateNominated=d,
+                    DateWatched=good_time,
+                ),
             )
 
             # Update our users
@@ -886,7 +895,16 @@ class TestFilmBot(unittest.TestCase):
             filmbot.start_watching_film(
                 FilmID=film_id1, DateTime=good_time, PresentUserIDs=[user_id1]
             ),
-            "My Film 1",
+            Film(
+                FilmID=film_id1,
+                FilmName="My Film 1",
+                DiscordUserID=user_id1,
+                CastVotes=1,
+                AttendanceVotes=0,
+                UsersAttended=set([user_id1]),
+                DateNominated=d,
+                DateWatched=good_time,
+            ),
         )
 
         # Update our users
