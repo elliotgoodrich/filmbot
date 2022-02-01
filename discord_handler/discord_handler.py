@@ -91,7 +91,7 @@ def handle_application_command(event, region_name):
                 "type": CHANNEL_MESSAGE_WITH_SOURCE,
                 "data": {
                     "content": (
-                        "<@{user_id} has cast the final vote. The standings are:\n"
+                        f"<@{user_id}> has cast the final vote. The standings are:\n"
                         + "\n".join(
                             map(
                                 display_nomination,
