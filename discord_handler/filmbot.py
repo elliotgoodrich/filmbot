@@ -585,7 +585,7 @@ class FilmBot:
 
         if response["Items"]:
             latest_watched_film = Film.fromDict(response["Items"][0])
-            if DateTime > latest_watched_film.DateWatched + timedelta(days=1):
+            if DateTime < latest_watched_film.DateWatched + timedelta(days=1):
                 raise UserError(
                     "At least 24 hours must pass before watching films"
                 )
