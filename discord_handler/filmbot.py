@@ -539,7 +539,7 @@ class FilmBot:
         """
         Attempt to record that we're watching the specified `FilmID` and
         record an attendance vote for each user in the `PresentUserIDs` array
-        and return the name of the film.  Also clear out all cast votes
+        and return the a `Film` object.  Also clear out all cast votes
         from all users and clear out the user's nomination who had previously
         nominated `FilmID`.  Throw an exception if `FilmID` isn't correct,
         less than 24 hours has passed since watching the last film, or
@@ -681,7 +681,7 @@ class FilmBot:
         ]
         self.client.transact_write_items(TransactItems=items)
 
-        return film.FilmName
+        return film
 
     def record_attendance_vote(self, *, DiscordUserID, DateTime):
         """
