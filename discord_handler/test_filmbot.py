@@ -821,7 +821,7 @@ class TestFilmBot(unittest.TestCase):
         self.assertEqual(grab_db(self.dynamodb_client), expected)
 
         good_time = d + timedelta(hours=24)
-        bad_time = good_time + timedelta(seconds=1)
+        bad_time = good_time - timedelta(seconds=1)
 
         # Check that we can't watch a film that doesn't exist
         with self.assertRaises(UserError):
