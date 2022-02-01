@@ -86,12 +86,14 @@ def handle_application_command(event, region_name):
         status = filmbot.cast_preference_vote(
             DiscordUserID=user_id, FilmID=film_id
         )
+        film_name = filmbot.get_nominated_film(film_id).FilmName
         if status == VotingStatus.COMPLETE:
             return {
                 "type": CHANNEL_MESSAGE_WITH_SOURCE,
                 "data": {
                     "content": (
-                        f"<@{user_id}> has cast the final vote. The standings are:\n"
+                        f"<@{user_id}> has voted for {film_name}.\n\n"
+                        "This was the final vote and the standings are:\n"
                         + "\n".join(
                             map(
                                 display_nomination,
@@ -102,12 +104,10 @@ def handle_application_command(event, region_name):
                 },
             }
         else:
-            film_name = filmbot.get_nominated_film(film_id)["FilmName"]
             return {
                 "type": CHANNEL_MESSAGE_WITH_SOURCE,
                 "data": {
-                    "content": f"You have cast your vote for {film_name}",
-                    "flags": EPHEMERAL_FLAG,
+                    "content": f"<@{user_id}> has voted for {film_name}",
                 },
             }
 
