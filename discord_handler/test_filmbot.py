@@ -725,18 +725,14 @@ class TestFilmBot(unittest.TestCase):
         self.assertEqual(grab_db(self.dynamodb_client), expected)
 
         # Check we can't vote for an already watched film
-        with self.assertRaises(
-            self.dynamodb_client.exceptions.TransactionCanceledException
-        ):
+        with self.assertRaises(UserError):
             filmbot.cast_preference_vote(
                 DiscordUserID=user_id1, FilmID=film_watched
             )
         self.assertEqual(grab_db(self.dynamodb_client), expected)
 
         # Check we can't vote for a non-existent film
-        with self.assertRaises(
-            self.dynamodb_client.exceptions.TransactionCanceledException
-        ):
+        with self.assertRaises(UserError):
             filmbot.cast_preference_vote(
                 DiscordUserID=user_id1, FilmID="not existent"
             )

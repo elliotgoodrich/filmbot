@@ -302,7 +302,9 @@ class FilmBot:
         )
 
         if "Item" not in response:
-            raise UserError(f"There is no nominated film with that ({FilmID})")
+            raise UserError(
+                f"There is no nominated film with that ID ({FilmID})"
+            )
 
         return Film.fromDict(response["Item"])
 
@@ -519,16 +521,19 @@ class FilmBot:
                 }
             )
 
-        # The transactions below really shouldn't throw.  The only way this throws is if we:
-        #   1. aren't registered,
-        #   2. vote for a `FilmID` that doesn't exists, or
-        #   3. the user votes (very) quickly in succession so updating our
-        #      users table fails because the current film we voted on doesn't
-        #      match what we previously extracted.
-        #
-        # If any of these actually happen in practice then a more descriptive
-        # error message can be returned, or hopefully the issue can be fixed.
-        self.client.transact_write_items(TransactItems=items)
+        # The transaction can also throw if the user votes quickly in
+        # succession so updating our users table fails because the
+        # current film we voted on doesn't match what we previously
+        # extracted.  This is unlikely to occur as the only sensible way
+        # to know the `FilmID` is to use the Discord autocomplete, which
+        # takes time to load.
+        try:
+            self.client.transact_write_items(TransactItems=items)
+        except self.client.exceptions.TransactionCanceledException:
+            raise UserError(
+                f"There is no nominated film with that ID ({FilmID})"
+            )
+
         return (
             VotingStatus.COMPLETE
             if user_voted_count + int(our_user_hasnt_voted) == len(user_list)
@@ -558,7 +563,9 @@ class FilmBot:
         )
 
         if "Item" not in response:
-            raise UserError(f"There is no nominated film with that ({FilmID})")
+            raise UserError(
+                f"There is no nominated film with that ID ({FilmID})"
+            )
 
         # Check to see all user IDs are valid
         all_users = self.get_users()
