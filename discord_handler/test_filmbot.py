@@ -8,6 +8,8 @@ from filmbot import (
     TABLE_NAME,
     AttendanceStatus,
     VotingStatus,
+    Film,
+    User,
     unkey_map,
     key_map,
 )
@@ -156,11 +158,12 @@ class TestFilmBot(unittest.TestCase):
         self.assertEqual(
             filmbot.get_users(),
             {
-                user_id1: {
-                    "NominatedFilmID": None,
-                    "VoteID": None,
-                    "AttendanceVoteID": None,
-                }
+                user_id1: User(
+                    DiscordUserID=user_id1,
+                    NominatedFilmID=None,
+                    VoteID=None,
+                    AttendanceVoteID=None,
+                )
             },
         )
 
@@ -199,16 +202,18 @@ class TestFilmBot(unittest.TestCase):
         self.assertEqual(
             filmbot.get_users(),
             {
-                user_id1: {
-                    "NominatedFilmID": film_id,
-                    "VoteID": film_id2,
-                    "AttendanceVoteID": None,
-                },
-                user_id2: {
-                    "NominatedFilmID": None,
-                    "VoteID": film_id,
-                    "AttendanceVoteID": film_id2,
-                },
+                user_id1: User(
+                    DiscordUserID=user_id1,
+                    NominatedFilmID=film_id,
+                    VoteID=film_id2,
+                    AttendanceVoteID=None,
+                ),
+                user_id2: User(
+                    DiscordUserID=user_id2,
+                    NominatedFilmID=None,
+                    VoteID=film_id,
+                    AttendanceVoteID=film_id2,
+                ),
             },
         )
         pass
@@ -269,7 +274,7 @@ class TestFilmBot(unittest.TestCase):
                 "DateNominated": (d + timedelta(seconds=1)).isoformat(),
             },
             {
-                "SK": f"FILM#WATCHED#{d.isoformat()}.film6",
+                "SK": f"FILM#WATCHED#{d.isoformat()}#film6",
                 "FilmName": "FilmName6",
                 "DiscordUserID": "UserF",
                 "CastVotes": 10,
@@ -280,56 +285,56 @@ class TestFilmBot(unittest.TestCase):
         ]
 
         expected = [
-            {
-                "SK": "FILM#NOMINATED#film1",
-                "FilmID": "film1",
-                "FilmName": "FilmName1",
-                "DiscordUserID": "UserA",
-                "CastVotes": 0,
-                "AttendanceVotes": 7,
-                "UsersAttended": None,
-                "DateNominated": d.isoformat(),
-            },
-            {
-                "SK": "FILM#NOMINATED#film2",
-                "FilmID": "film2",
-                "FilmName": "FilmName2",
-                "DiscordUserID": "UserB",
-                "CastVotes": 3,
-                "AttendanceVotes": 3,
-                "UsersAttended": None,
-                "DateNominated": d.isoformat(),
-            },
-            {
-                "SK": "FILM#NOMINATED#film4",
-                "FilmID": "film4",
-                "FilmName": "FilmName4",
-                "DiscordUserID": "UserD",
-                "CastVotes": 2,
-                "AttendanceVotes": 4,
-                "UsersAttended": None,
-                "DateNominated": d.isoformat(),
-            },
-            {
-                "SK": "FILM#NOMINATED#film5",
-                "FilmID": "film5",
-                "FilmName": "FilmName5",
-                "DiscordUserID": "UserE",
-                "CastVotes": 2,
-                "AttendanceVotes": 4,
-                "UsersAttended": None,
-                "DateNominated": (d + timedelta(seconds=1)).isoformat(),
-            },
-            {
-                "SK": "FILM#NOMINATED#film3",
-                "FilmID": "film3",
-                "FilmName": "FilmName3",
-                "DiscordUserID": "UserC",
-                "CastVotes": 2,
-                "AttendanceVotes": 3,
-                "UsersAttended": None,
-                "DateNominated": d.isoformat(),
-            },
+            Film(
+                FilmID="film1",
+                FilmName="FilmName1",
+                DiscordUserID="UserA",
+                CastVotes=0,
+                AttendanceVotes=7,
+                UsersAttended=None,
+                DateNominated=d,
+                DateWatched=None,
+            ),
+            Film(
+                FilmID="film2",
+                FilmName="FilmName2",
+                DiscordUserID="UserB",
+                CastVotes=3,
+                AttendanceVotes=3,
+                UsersAttended=None,
+                DateNominated=d,
+                DateWatched=None,
+            ),
+            Film(
+                FilmID="film4",
+                FilmName="FilmName4",
+                DiscordUserID="UserD",
+                CastVotes=2,
+                AttendanceVotes=4,
+                UsersAttended=None,
+                DateNominated=d,
+                DateWatched=None,
+            ),
+            Film(
+                FilmID="film5",
+                FilmName="FilmName5",
+                DiscordUserID="UserE",
+                CastVotes=2,
+                AttendanceVotes=4,
+                UsersAttended=None,
+                DateNominated=d + timedelta(seconds=1),
+                DateWatched=None,
+            ),
+            Film(
+                FilmID="film3",
+                FilmName="FilmName3",
+                DiscordUserID="UserC",
+                CastVotes=2,
+                AttendanceVotes=3,
+                UsersAttended=None,
+                DateNominated=d,
+                DateWatched=None,
+            ),
         ]
 
         # Test all permutation of the input to make sure that we are actually
@@ -371,7 +376,7 @@ class TestFilmBot(unittest.TestCase):
                 "DateNominated": (d + timedelta(seconds=2)).isoformat(),
             },
             {
-                "SK": f"FILM#WATCHED#{(d + timedelta(seconds=1)).isoformat()}.film3",
+                "SK": f"FILM#WATCHED#{(d + timedelta(seconds=1)).isoformat()}#film3",
                 "FilmName": "FilmName3",
                 "DiscordUserID": "UserC",
                 "CastVotes": 2,
@@ -380,7 +385,7 @@ class TestFilmBot(unittest.TestCase):
                 "DateNominated": (d + timedelta(seconds=1)).isoformat(),
             },
             {
-                "SK": f"FILM#WATCHED#{d.isoformat()}.film4",
+                "SK": f"FILM#WATCHED#{d.isoformat()}#film4",
                 "FilmName": "FilmName4",
                 "DiscordUserID": "UserD",
                 "CastVotes": 10,
@@ -391,42 +396,46 @@ class TestFilmBot(unittest.TestCase):
         ]
 
         expected = [
-            {
-                "SK": "FILM#NOMINATED#film1",
-                "FilmName": "FilmName1",
-                "DiscordUserID": "UserA",
-                "CastVotes": 0,
-                "AttendanceVotes": 7,
-                "UsersAttended": None,
-                "DateNominated": d.isoformat(),
-            },
-            {
-                "SK": f"FILM#WATCHED#{(d + timedelta(seconds=1)).isoformat()}.film3",
-                "FilmName": "FilmName3",
-                "DiscordUserID": "UserC",
-                "CastVotes": 2,
-                "AttendanceVotes": 4,
-                "UsersAttended": set(["A", "B", "C"]),
-                "DateNominated": (d + timedelta(seconds=1)).isoformat(),
-            },
-            {
-                "SK": "FILM#NOMINATED#film2",
-                "FilmName": "FilmName2",
-                "DiscordUserID": "UserB",
-                "CastVotes": 3,
-                "AttendanceVotes": 3,
-                "UsersAttended": None,
-                "DateNominated": (d + timedelta(seconds=2)).isoformat(),
-            },
-            {
-                "SK": f"FILM#WATCHED#{d.isoformat()}.film4",
-                "FilmName": "FilmName4",
-                "DiscordUserID": "UserD",
-                "CastVotes": 10,
-                "AttendanceVotes": 9,
-                "UsersAttended": set(["A"]),
-                "DateNominated": (d + timedelta(seconds=3)).isoformat(),
-            },
+            Film(
+                FilmID="film1",
+                FilmName="FilmName1",
+                DiscordUserID="UserA",
+                CastVotes=0,
+                AttendanceVotes=7,
+                UsersAttended=None,
+                DateNominated=d,
+                DateWatched=None,
+            ),
+            Film(
+                FilmID="film3",
+                FilmName="FilmName3",
+                DiscordUserID="UserC",
+                CastVotes=2,
+                AttendanceVotes=4,
+                UsersAttended=set(["A", "B", "C"]),
+                DateNominated=d + timedelta(seconds=1),
+                DateWatched=d + timedelta(seconds=1),
+            ),
+            Film(
+                FilmID="film2",
+                FilmName="FilmName2",
+                DiscordUserID="UserB",
+                CastVotes=3,
+                AttendanceVotes=3,
+                UsersAttended=None,
+                DateNominated=d + timedelta(seconds=2),
+                DateWatched=None,
+            ),
+            Film(
+                FilmID="film4",
+                FilmName="FilmName4",
+                DiscordUserID="UserD",
+                CastVotes=10,
+                AttendanceVotes=9,
+                UsersAttended=set(["A"]),
+                DateNominated=d + timedelta(seconds=3),
+                DateWatched=d,
+            ),
         ]
 
         # Test all permutation of the input to make sure that we are actually
@@ -657,7 +666,7 @@ class TestFilmBot(unittest.TestCase):
                     "DateNominated": d.isoformat(),
                 },
                 {
-                    "SK": f"FILM#WATCHED#{ages_ago.isoformat()}.Super-old-film",
+                    "SK": f"FILM#WATCHED#{ages_ago.isoformat()}#Super-old-film",
                     "FilmName": "My Film 4 (Watched)",
                     "DiscordUserID": user_id1,
                     "CastVotes": 0,
@@ -845,10 +854,13 @@ class TestFilmBot(unittest.TestCase):
 
         # Check we can watch a film with multiple users initially present
         with snapshot(self.dynamodb_client) as exp:
-            filmbot.start_watching_film(
-                FilmID=film_id1,
-                DateTime=good_time,
-                PresentUserIDs=[user_id1, user_id2, user_id3],
+            self.assertEqual(
+                filmbot.start_watching_film(
+                    FilmID=film_id1,
+                    DateTime=good_time,
+                    PresentUserIDs=[user_id1, user_id2, user_id3],
+                ),
+                "My Film 1",
             )
 
             # Update our users
@@ -874,8 +886,11 @@ class TestFilmBot(unittest.TestCase):
             self.assertEqual(grab_db(self.dynamodb_client), exp)
 
         # Check we can watch a film with just one user
-        filmbot.start_watching_film(
-            FilmID=film_id1, DateTime=good_time, PresentUserIDs=[user_id1]
+        self.assertEqual(
+            filmbot.start_watching_film(
+                FilmID=film_id1, DateTime=good_time, PresentUserIDs=[user_id1]
+            ),
+            "My Film 1",
         )
 
         # Update our users

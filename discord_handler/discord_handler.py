@@ -35,6 +35,12 @@ def films_to_choices(films):
     )
 
 
+def display_nomination(nomination):
+    position = nomination[0] + 1
+    n = nomination[1]
+    return f"  {position}. <@{n.DiscordUserID}> {n.FilmName} ({n.CastVotes + n.AttendanceVotes} votes)"
+
+
 def handle_application_command(event, region_name):
     """
     Handle the 4 application commands that we support:
@@ -63,43 +69,82 @@ def handle_application_command(event, region_name):
         return {
             "type": CHANNEL_MESSAGE_WITH_SOURCE,
             "data": {
-                "content": f"You have successfully nominated {film_name}"
+                "content": (
+                    f"<@{user_id}> has successfully nominated {film_name}. "
+                    + "The current list of nominations are:\n"
+                    + "\n".join(
+                        map(
+                            display_nomination,
+                            enumerate(filmbot.get_nominations()),
+                        )
+                    )
+                )
             },
         }
     elif command == "vote":
         film_id = body["data"]["options"][0]["value"]
-        filmbot.cast_preference_vote(DiscordUserID=user_id, FilmID=film_id)
-        return {
-            "type": CHANNEL_MESSAGE_WITH_SOURCE,
-            "data": {
-                "content": "Vote successfully recorded",
-                "flags": EPHEMERAL_FLAG,
-            },
-        }
+        status = filmbot.cast_preference_vote(
+            DiscordUserID=user_id, FilmID=film_id
+        )
+        if status == VotingStatus.COMPLETE:
+            return {
+                "type": CHANNEL_MESSAGE_WITH_SOURCE,
+                "data": {
+                    "content": (
+                        "<@{user_id} has cast the final vote. The standings are:\n"
+                        + "\n".join(
+                            map(
+                                display_nomination,
+                                enumerate(filmbot.get_nominations()),
+                            )
+                        )
+                    )
+                },
+            }
+        else:
+            film_name = filmbot.get_nominated_film(film_id)["FilmName"]
+            return {
+                "type": CHANNEL_MESSAGE_WITH_SOURCE,
+                "data": {
+                    "content": f"You have cast your vote for {film_name}",
+                    "flags": EPHEMERAL_FLAG,
+                },
+            }
 
     elif command == "watch":
         film_id = body["data"]["options"][0]["value"]
-        filmbot.start_watching_film(
+        film_name = filmbot.start_watching_film(
             FilmID=film_id, DateTime=now, PresentUserIDs=[user_id]
-        )
-        return {
-            "type": CHANNEL_MESSAGE_WITH_SOURCE,
-            "data": {"content": "Successfully started watching"},
-        }
-    elif command == "here":
-        status = filmbot.record_attendance_vote(
-            DiscordUserID=user_id, DateTime=now
         )
         return {
             "type": CHANNEL_MESSAGE_WITH_SOURCE,
             "data": {
                 "content": (
-                    "Your attendance has been recorded"
-                    if status == AttendanceStatus.REGISTERED
-                    else "Your attendance has already been recorded"
+                    f"Started watching {film_name}!\n\n"
+                    + f"Everyone other than <@{user_id}> should record their attendance using `/here`.\n\n"
+                    + f"<@{user_id}> can now nominated their next suggestion with `/nominate`"
                 )
             },
         }
+    elif command == "here":
+        status = filmbot.record_attendance_vote(
+            DiscordUserID=user_id, DateTime=now
+        )
+        response = {
+            "type": CHANNEL_MESSAGE_WITH_SOURCE,
+            "data": {
+                "content": (
+                    f"<@{user_id}>'s has attended"
+                    if status == AttendanceStatus.REGISTERED
+                    else f"Your attendance has already been recorded"
+                )
+            },
+        }
+
+        # Don't allow users to flood the chat with `/here` commands
+        if status == AttendanceStatus.ALREADY_REGISTERED:
+            response["data"]["flags"] = EPHEMERAL_FLAG
+        return response
     else:
         raise Exception(f"Unknown application command (/{command})")
 

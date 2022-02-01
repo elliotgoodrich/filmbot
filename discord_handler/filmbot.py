@@ -22,6 +22,145 @@ FILM_UsersAttended = "UsersAttended"
 FILM_DateNominated = "DateNominated"
 
 
+class User:
+    def __init__(
+        self,
+        *,
+        DiscordUserID,
+        NominatedFilmID,
+        VoteID,
+        AttendanceVoteID,
+    ):
+        self.DiscordUserID = DiscordUserID
+        self.NominatedFilmID = NominatedFilmID
+        self.VoteID = VoteID
+        self.AttendanceVoteID = AttendanceVoteID
+
+    @property
+    def SK(self):
+        return f"USER#{self.DiscordUserID}"
+
+    def __eq__(self, other):
+        return (
+            self.DiscordUserID == other.DiscordUserID
+            and self.NominatedFilmID == other.NominatedFilmID
+            and self.VoteID == other.VoteID
+            and self.AttendanceVoteID == other.AttendanceVoteID
+        )
+
+    def toDict(self, *, GuildID):
+        return {
+            "PK": {"S": GuildID},
+            "SK": {"S": self.SK},
+            "NominatedFilmID": keyed(self.NominatedFilmID),
+            "VoteID": keyed(self.VoteID),
+            "AttendanceVoteID": keyed(self.AttendanceVoteID),
+        }
+
+    @staticmethod
+    def fromDict(dict):
+        return User(
+            DiscordUserID=dict[USER_SK]["S"].split("#")[-1],
+            NominatedFilmID=unkeyed(dict[USER_NominatedFilmID]),
+            VoteID=unkeyed(dict[USER_VoteID]),
+            AttendanceVoteID=unkeyed(dict[USER_AttendanceVoteID]),
+        )
+
+
+class Film:
+    def __init__(
+        self,
+        *,
+        FilmID,
+        FilmName,
+        DiscordUserID,
+        CastVotes,
+        AttendanceVotes,
+        UsersAttended,
+        DateNominated,
+        DateWatched,
+    ):
+        self.FilmID = FilmID
+        self.FilmName = FilmName
+        self.DiscordUserID = DiscordUserID
+        self.CastVotes = CastVotes
+        self.AttendanceVotes = AttendanceVotes
+        self.UsersAttended = UsersAttended
+        self.DateNominated = DateNominated
+        self.DateWatched = DateWatched
+
+    @property
+    def SK(self):
+        return (
+            f"FILM#NOMINATED#{self.FilmID}"
+            if self.DateWatched is None
+            else f"FILM#WATCHED#{datetime.isoformat(self.DateWatched)}#{self.FilmID}"
+        )
+
+    def __eq__(self, other):
+        return (
+            self.FilmID == other.FilmID
+            and self.FilmName == other.FilmName
+            and self.DiscordUserID == other.DiscordUserID
+            and self.CastVotes == other.CastVotes
+            and self.AttendanceVotes == other.AttendanceVotes
+            and self.UsersAttended == other.UsersAttended
+            and self.DateNominated == other.DateNominated
+            and self.DateWatched == other.DateWatched
+        )
+
+    def __repr__(self):
+        return (
+            f"SK={self.SK}\n"
+            f"FilmID={self.FilmID}\n"
+            f"FilmName={self.FilmName}\n"
+            f"DiscordUserID={self.DiscordUserID}\n"
+            f"CastVotes={self.CastVotes}\n"
+            f"AttendanceVotes={self.AttendanceVotes}\n"
+            f"UsersAttended={self.UsersAttended}\n"
+            f"DateNominated={self.DateNominated}\n"
+            f"DateWatched={self.DateWatched}"
+        )
+
+    def toDict(self, *, GuildID):
+        return {
+            "PK": {"S": GuildID},
+            "SK": {"S": self.SK},
+            "FilmName": {"S": self.FilmName},
+            "DiscordUserID": {"S": self.DiscordUserID},
+            "CastVotes": {"N": str(self.CastVotes)},
+            "AttendanceVotes": {"N": str(self.AttendanceVotes)},
+            "UsersAttended": (
+                {"NULL": True}
+                if self.UsersAttended is None
+                else {"SS": list(self.UsersAttended)}
+            ),
+            "DateNominated": {"S": datetime.isoformat(self.DateNominated)},
+        }
+
+    @staticmethod
+    def fromDict(dict):
+        sk_parts = dict[FILM_SK]["S"].split("#")
+        assert len(sk_parts) >= 3
+        assert sk_parts[0] == "FILM"
+        return Film(
+            FilmID=sk_parts[-1],
+            FilmName=dict[FILM_FilmName]["S"],
+            DiscordUserID=dict[FILM_DiscordUserID]["S"],
+            CastVotes=int(dict[FILM_CastVotes]["N"]),
+            AttendanceVotes=int(dict[FILM_AttendanceVotes]["N"]),
+            UsersAttended=unkeyed(dict[FILM_UsersAttended]),
+            DateNominated=datetime.fromisoformat(
+                dict[FILM_DateNominated]["S"]
+            ),
+            DateWatched=(
+                datetime.fromisoformat(sk_parts[2])
+                if sk_parts[1] == "WATCHED"
+                else None
+            ),
+        )
+
+
 def extract_SK(sortKeyValue):
     return sortKeyValue.split("#")[-1]
 
@@ -109,82 +248,95 @@ class FilmBot:
     def guildID(self):
         return self._guildID
 
+    def __query(self, kwargs):
+        """
+        Run a DynamoDB query with the specified `kwargs` and return the result.
+        """
+        start_key = None
+        results = []
+        while True:
+            if start_key:
+                kwargs["ExclusiveStartKey"] = start_key
+            response = self.client.query(**kwargs)
+            results += response["Items"]
+            start_key = response.get("LastEvaluatedKey", None)
+            if start_key is None:
+                return results
+
     def get_users(self):
         """
         Return a dictionary keyed by users against their votes and nomination.
         """
 
-        kwargs = {
-            "TableName": TABLE_NAME,
-            "ExpressionAttributeValues": {
-                ":GuildID": {"S": self.guildID},
-                ":UserPrefix": {"S": "USER#"},
-            },
-            "KeyConditionExpression": (
-                f"{USER_PK} = :GuildID AND "
-                f"begins_with({USER_SK}, :UserPrefix)"
+        users = map(
+            User.fromDict,
+            self.__query(
+                {
+                    "TableName": TABLE_NAME,
+                    "ExpressionAttributeValues": {
+                        ":GuildID": {"S": self.guildID},
+                        ":UserPrefix": {"S": "USER#"},
+                    },
+                    "KeyConditionExpression": (
+                        f"{USER_PK} = :GuildID AND "
+                        f"begins_with({USER_SK}, :UserPrefix)"
+                    ),
+                }
             ),
-        }
+        )
 
-        done = False
-        start_key = None
-        users = {}
-        while not done:
-            if start_key:
-                kwargs["ExclusiveStartKey"] = start_key
-            response = self.client.query(**kwargs)
-            for user in response.get("Items"):
-                fixed_user = unkey_map(user)
-                user_id = extract_SK(fixed_user[USER_SK])
-                del fixed_user[USER_PK]
-                del fixed_user[USER_SK]
-                users[user_id] = fixed_user
-            start_key = response.get("LastEvaluatedKey", None)
-            done = start_key is None
+        return {user.DiscordUserID: user for user in users}
 
-        return users
+    def get_nominated_film(self, FilmID):
+        """
+        Return a `Film` object for the nominated film with the specified `FilmID`.
+        Throw an exception if there isn't a nominated film associated with
+        `FilmID`.
+        """
+        response = self.client.get_item(
+            TableName=TABLE_NAME,
+            Key={
+                FILM_PK: {"S": self.guildID},
+                FILM_SK: {"S": f"FILM#NOMINATED#{FilmID}"},
+            },
+        )
+
+        if "Item" not in response:
+            raise UserError(f"There is no nominated film with that ({FilmID})")
+
+        return Film.fromDict(response["Item"])
 
     def get_nominations(self):
         """Return an array of currently nominated films in the order that they should
         be watched based on their vote tally."""
 
-        kwargs = {
-            "TableName": TABLE_NAME,
-            "ExpressionAttributeValues": {
-                ":GuildID": {"S": self.guildID},
-                ":FilmPrefix": {"S": "FILM#NOMINATED#"},
-            },
-            "KeyConditionExpression": (
-                f"{FILM_PK} = :GuildID AND "
-                f"begins_with({FILM_SK}, :FilmPrefix)"
+        nominations = map(
+            Film.fromDict,
+            self.__query(
+                {
+                    "TableName": TABLE_NAME,
+                    "ExpressionAttributeValues": {
+                        ":GuildID": {"S": self.guildID},
+                        ":FilmPrefix": {"S": "FILM#NOMINATED#"},
+                    },
+                    "KeyConditionExpression": (
+                        f"{FILM_PK} = :GuildID AND "
+                        f"begins_with({FILM_SK}, :FilmPrefix)"
+                    ),
+                }
             ),
-        }
-
-        done = False
-        start_key = None
-        nominated = []
-        while not done:
-            if start_key:
-                kwargs["ExclusiveStartKey"] = start_key
-            response = self.client.query(**kwargs)
-            for film in response.get("Items"):
-                fixed_film = unkey_map(film)
-                fixed_film["FilmID"] = extract_SK(fixed_film[FILM_SK])
-                del fixed_film[FILM_PK]
-                nominated.append(fixed_film)
-            start_key = response.get("LastEvaluatedKey", None)
-            done = start_key is None
+        )
 
         # Sort by:
         #   - the highest number of votes
         #   - if that is the same, then tie break by highest cast votes
         #   - if that is the same, then tie break by earliest nominated
         return sorted(
-            nominated,
+            nominations,
             key=lambda n: [
-                -n[FILM_CastVotes] - n[FILM_AttendanceVotes],
-                -n[FILM_CastVotes],
-                n[FILM_DateNominated],
+                -n.CastVotes - n.AttendanceVotes,
+                -n.CastVotes,
+                n.DateNominated,
             ],
         )
 
@@ -193,33 +345,24 @@ class FilmBot:
         Return an array watched and unwatched films in the order that they were
         nominated.
         """
-        kwargs = {
-            "TableName": TABLE_NAME,
-            "ExpressionAttributeValues": {
-                ":GuildID": {"S": self.guildID},
-                ":FilmPrefix": {"S": "FILM#"},
-            },
-            "KeyConditionExpression": (
-                f"{FILM_PK} = :GuildID AND "
-                f"begins_with({FILM_SK}, :FilmPrefix)"
+        films = map(
+            Film.fromDict,
+            self.__query(
+                {
+                    "TableName": TABLE_NAME,
+                    "ExpressionAttributeValues": {
+                        ":GuildID": {"S": self.guildID},
+                        ":FilmPrefix": {"S": "FILM#"},
+                    },
+                    "KeyConditionExpression": (
+                        f"{FILM_PK} = :GuildID AND "
+                        f"begins_with({FILM_SK}, :FilmPrefix)"
+                    ),
+                }
             ),
-        }
+        )
 
-        done = False
-        start_key = None
-        films = []
-        while not done:
-            if start_key:
-                kwargs["ExclusiveStartKey"] = start_key
-            response = self.client.query(**kwargs)
-            for film in response.get("Items"):
-                fixed_film = unkey_map(film)
-                del fixed_film[FILM_PK]
-                films.append(fixed_film)
-            start_key = response.get("LastEvaluatedKey", None)
-            done = start_key is None
-
-        return sorted(films, key=lambda n: n[FILM_DateNominated])
+        return sorted(films, key=lambda n: n.DateNominated)
 
     def nominate_film(self, *, DiscordUserID, FilmName, NewFilmID, DateTime):
         """
@@ -228,6 +371,18 @@ class FilmBot:
         then register them.  If `DiscordUserID` already has a nomination then
         throw an exception.
         """
+
+        new_film = Film(
+            FilmID=NewFilmID,
+            FilmName=FilmName,
+            DiscordUserID=DiscordUserID,
+            CastVotes=0,
+            AttendanceVotes=0,
+            # Empty string sets are not allowed so we have to use None
+            UsersAttended=None,
+            DateNominated=DateTime,
+            DateWatched=None,
+        )
 
         try:
             self.client.transact_write_items(
@@ -260,19 +415,7 @@ class FilmBot:
                     {
                         "Put": {
                             "TableName": TABLE_NAME,
-                            "Item": {
-                                FILM_PK: {"S": self.guildID},
-                                FILM_SK: {"S": f"FILM#NOMINATED#{NewFilmID}"},
-                                FILM_FilmName: {"S": FilmName},
-                                FILM_DiscordUserID: {"S": DiscordUserID},
-                                FILM_CastVotes: {"N": "0"},
-                                FILM_AttendanceVotes: {"N": "0"},
-                                # Empty string sets are not allowed so we have to use NULL
-                                FILM_UsersAttended: {"NULL": True},
-                                FILM_DateNominated: {
-                                    "S": DateTime.isoformat()
-                                },
-                            },
+                            "Item": new_film.toDict(GuildID=self.guildID),
                             # Make sure we haven't reused this film ID before
                             "ConditionExpression": f"attribute_not_exists({FILM_SK})",
                         }
@@ -299,18 +442,16 @@ class FilmBot:
             raise UserError("You can't vote until you have nominated a film")
 
         our_user = users[DiscordUserID]
-        previous_vote = our_user[USER_VoteID]
+        previous_vote = our_user.VoteID
 
         # Disallow voting for your own nomination
-        if FilmID == our_user[USER_NominatedFilmID]:
+        if FilmID == our_user.NominatedFilmID:
             raise UserError("You can't vote for your own film")
 
         # Record if this is the last user to vote
         user_list = users.values()
-        user_voted_count = sum(
-            user[USER_VoteID] is not None for user in user_list
-        )
-        our_user_hasnt_voted = our_user[USER_VoteID] is None
+        user_voted_count = sum(user.VoteID is not None for user in user_list)
+        our_user_hasnt_voted = our_user.VoteID is None
 
         # Do nothing if user votes for the same thing
         if previous_vote == FilmID:
@@ -398,10 +539,11 @@ class FilmBot:
         """
         Attempt to record that we're watching the specified `FilmID` and
         record an attendance vote for each user in the `PresentUserIDs` array
-        Also clear out all cast votes from all users and clear out the
-        user's nomination who had previously nominated `FilmID`.  Throw
-        an exception if `FilmID` isn't correct, less than 24 hours has
-        passed since watching the last film, or `PresentUserIDs` is empty.
+        and return the name of the film.  Also clear out all cast votes
+        from all users and clear out the user's nomination who had previously
+        nominated `FilmID`.  Throw an exception if `FilmID` isn't correct,
+        less than 24 hours has passed since watching the last film, or
+        `PresentUserIDs` is empty.
         """
 
         # At least one user must be present to start watching a film"
@@ -423,8 +565,8 @@ class FilmBot:
         for user in PresentUserIDs:
             assert user in all_users
 
-        film = response["Item"]
-        nominator_user_id = film[FILM_DiscordUserID]["S"]
+        film = Film.fromDict(response["Item"])
+        nominator_user_id = film.DiscordUserID
 
         # Get the last film watched and see if enough time has passed
         response = self.client.query(
@@ -442,10 +584,8 @@ class FilmBot:
         )
 
         if response["Items"]:
-            latest_watched_film = response["Items"][0]
-            watch_time, _ = extract_watched(latest_watched_film[FILM_SK]["S"])
-            watch_time = datetime.fromisoformat(watch_time)
-            if DateTime > watch_time + timedelta(days=1):
+            latest_watched_film = Film.fromDict(response["Items"][0])
+            if DateTime > latest_watched_film.DateWatched + timedelta(days=1):
                 raise UserError(
                     "At least 24 hours must pass before watching films"
                 )
@@ -481,9 +621,7 @@ class FilmBot:
                         },
                         "ExpressionAttributeValues": {
                             ":Null": {"NULL": True},
-                            ":PreviousNomination": keyed(
-                                user[USER_NominatedFilmID]
-                            ),
+                            ":PreviousNomination": keyed(user.NominatedFilmID),
                             ":AttendanceVote": attendance_vote,
                         },
                         # We have already checked that the user exists
@@ -499,7 +637,7 @@ class FilmBot:
             if (
                 user_id in PresentUserIDs
                 and user_id != nominator_user_id
-                and user[USER_NominatedFilmID] is not None
+                and user.NominatedFilmID is not None
             ):
                 items.append(
                     {
@@ -508,7 +646,7 @@ class FilmBot:
                             "Key": {
                                 FILM_PK: {"S": self.guildID},
                                 FILM_SK: {
-                                    "S": f"FILM#NOMINATED#{user[USER_NominatedFilmID]}"
+                                    "S": f"FILM#NOMINATED#{user.NominatedFilmID}"
                                 },
                             },
                             "ExpressionAttributeValues": {
@@ -519,9 +657,8 @@ class FilmBot:
                     }
                 )
 
-        # Delete the film entry and reenter it with the `NOMINATED` prefix + Datetime
-        film[FILM_SK] = {"S": f"FILM#WATCHED#{DateTime.isoformat()}#{FilmID}"}
-        film[FILM_UsersAttended] = {"SS": PresentUserIDs}
+        film.DateWatched = DateTime
+        film.UsersAttended = set(PresentUserIDs)
         items += [
             {
                 "Delete": {
@@ -538,11 +675,13 @@ class FilmBot:
             {
                 "Put": {
                     "TableName": TABLE_NAME,
-                    "Item": film,
+                    "Item": film.toDict(GuildID=self.guildID),
                 },
             },
         ]
         self.client.transact_write_items(TransactItems=items)
+
+        return film.FilmName
 
     def record_attendance_vote(self, *, DiscordUserID, DateTime):
         """
@@ -562,10 +701,10 @@ class FilmBot:
                 "You cannot register attendance until you have nominated"
             )
 
-        user = unkey_map(response["Item"])
+        user = User.fromDict(response["Item"])
 
         # Do nothing if the user has already recorded their attendance
-        if user[USER_AttendanceVoteID] is not None:
+        if user.AttendanceVoteID is not None:
             return AttendanceStatus.ALREADY_REGISTERED
 
         # Get the last film watched and see if we fall within the correct
@@ -587,23 +726,19 @@ class FilmBot:
         if not response["Items"]:
             raise UserError("There are no films that have been watched")
 
-        latest_watched_film = unkey_map(response["Items"][0])
-        watch_time, film_id = extract_watched(latest_watched_film[FILM_SK])
-        watch_time = datetime.fromisoformat(watch_time)
+        # We shouldn't be recording attendance before we started watching a
+        # film, but check for this anyway.
+        latest_watched_film = Film.fromDict(response["Items"][0])
+        if DateTime < latest_watched_film.DateWatched:
+            raise UserError(
+                "Cannot record attendance for a film that hasn't yet started"
+            )
 
         # TODO: Get runtime from IMDB and use this
         # Note that this must never be greater than the watch cooldown
         # period (currently 24 hours) otherwise it would be possible to
         # have several films watched concurrently
-        end_time = watch_time + timedelta(hours=4)
-
-        # We shouldn't be recording attendance before we started watching a
-        # film, but check for this anyway.
-        if DateTime < watch_time:
-            raise UserError(
-                "Cannot record attendance for a film that hasn't yet started"
-            )
-
+        end_time = latest_watched_film.DateWatched + timedelta(hours=4)
         if DateTime > end_time:
             raise UserError(
                 f"The cutoff for registering attendance was {end_time}"
@@ -616,11 +751,11 @@ class FilmBot:
                     "TableName": TABLE_NAME,
                     "Key": {
                         USER_PK: {"S": self.guildID},
-                        USER_SK: {"S": user[USER_SK]},
+                        USER_SK: {"S": user.SK},
                     },
                     "ExpressionAttributeValues": {
                         ":Null": {"NULL": True},
-                        ":AttendanceVote": {"S": film_id},
+                        ":AttendanceVote": {"S": latest_watched_film.FilmID},
                     },
                     # Check that we haven't recorded an attendance in the meantime
                     "ConditionExpression": f"{USER_AttendanceVoteID} = :Null",
@@ -633,7 +768,7 @@ class FilmBot:
                     "TableName": TABLE_NAME,
                     "Key": {
                         FILM_PK: {"S": self.guildID},
-                        FILM_SK: {"S": latest_watched_film[FILM_SK]},
+                        FILM_SK: {"S": latest_watched_film.SK},
                     },
                     "ExpressionAttributeValues": {
                         ":User": {"SS": [DiscordUserID]},
@@ -648,9 +783,8 @@ class FilmBot:
         # straight after we start watching our film or we could have failed to nominate
         # a new film before a second film has started being watched
         if (
-            latest_watched_film[FILM_DiscordUserID]
-            != extract_SK(user[USER_SK])
-            and user[USER_NominatedFilmID] is not None
+            latest_watched_film.DiscordUserID != user.DiscordUserID
+            and user.NominatedFilmID is not None
         ):
             items.append(
                 {
@@ -659,7 +793,7 @@ class FilmBot:
                         "Key": {
                             FILM_PK: {"S": self.guildID},
                             FILM_SK: {
-                                "S": f"FILM#NOMINATED#{user[USER_NominatedFilmID]}"
+                                "S": f"FILM#NOMINATED#{user.NominatedFilmID}"
                             },
                         },
                         "ExpressionAttributeValues": {
