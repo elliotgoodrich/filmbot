@@ -208,7 +208,10 @@ def handle_discord(event, region_name):
             # If we get a `UserError` it's something we can display to the user
             return {
                 "type": CHANNEL_MESSAGE_WITH_SOURCE,
-                "data": {"content": f"ERROR! {str(e)}"},
+                "data": {
+                    "content": str(e),
+                    "flags": EPHEMERAL_FLAG,
+                },
             }
     elif type == MESSAGE_COMPONENT:
         raise Exception(f"Unknown type ({type})!")
