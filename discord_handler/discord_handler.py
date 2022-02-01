@@ -168,8 +168,8 @@ def handle_autocomplete(event, region_name):
         # Reorder to have the oldest film show up first and filter out
         # our nomination as we can't vote for it.
         final_nominations = sorted(
-            filter(lambda f: f["DiscordUserID"] != user_id, nominations),
-            key=lambda f: f["DateNominated"],
+            filter(lambda f: f.DiscordUserID != user_id, nominations),
+            key=lambda f: f.DateNominated,
             reverse=True,
         )
         return {
