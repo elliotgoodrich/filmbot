@@ -46,6 +46,7 @@ def handle_application_command(event, region_name):
     Handle the 4 application commands that we support:
       * /nominate [FilmName]
       * /vote [FilmID]
+      * /peek
       * /watch [FilmID]
       * /here
     """
@@ -110,6 +111,23 @@ def handle_application_command(event, region_name):
                     "content": f"<@{user_id}> has voted for {film_name}",
                 },
             }
+
+    elif command == "peek":
+        return {
+            "type": CHANNEL_MESSAGE_WITH_SOURCE,
+            "data": {
+                "content": (
+                    "The current list of nominations are:\n"
+                    + "\n".join(
+                        map(
+                            display_nomination,
+                            enumerate(filmbot.get_nominations()),
+                        )
+                    )
+                ),
+                "flags": EPHEMERAL_FLAG,
+            },
+        }
 
     elif command == "watch":
         film_id = body["data"]["options"][0]["value"]

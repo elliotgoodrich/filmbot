@@ -6,7 +6,9 @@
 # This application will register the Discord application commands
 #   - /vote
 #   - /nominate
+#   - /peek
 #   - /watch
+#   - /here
 # so that they are visible and accessible within Discord.
 #
 # Usage
@@ -49,6 +51,11 @@ commands = [
                 "required": True,
             }
         ],
+    },
+    {
+        "name": "peek",
+        "type": 1,
+        "description": "Display the current set of nominations",
     },
     {
         "name": "watch",
