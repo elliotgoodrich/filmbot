@@ -38,7 +38,9 @@ def films_to_choices(films):
 def display_nomination(nomination):
     position = nomination[0] + 1
     n = nomination[1]
-    return f"  {position}. <@{n.DiscordUserID}> {n.FilmName} ({n.CastVotes + n.AttendanceVotes} votes)"
+    vote_count = n.CastVotes + n.AttendanceVotes
+    s = "" if vote_count == 1 else "s"
+    return f"  {position}. <@{n.DiscordUserID}> {n.FilmName} ({vote_count} vote{s})"
 
 
 def handle_application_command(event, region_name):
