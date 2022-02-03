@@ -154,7 +154,7 @@ def handle_application_command(event, region_name):
             "type": CHANNEL_MESSAGE_WITH_SOURCE,
             "data": {
                 "content": (
-                    f"<@{user_id}>'s has attended"
+                    f"<@{user_id}> has attended"
                     if status == AttendanceStatus.REGISTERED
                     else f"Your attendance has already been recorded"
                 )
