@@ -49,6 +49,7 @@ commands = [
                 "description": "The name of the film you would like to nominate",
                 "type": 3,
                 "required": True,
+                "autocomplete": True,
             }
         ],
     },

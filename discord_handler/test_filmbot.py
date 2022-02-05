@@ -231,6 +231,7 @@ class TestFilmBot(unittest.TestCase):
             {
                 "SK": "FILM#NOMINATED#film1",
                 "FilmName": "FilmName1",
+                "IMDbID": None,
                 "DiscordUserID": "UserA",
                 "CastVotes": 0,
                 "AttendanceVotes": 7,
@@ -240,6 +241,7 @@ class TestFilmBot(unittest.TestCase):
             {
                 "SK": "FILM#NOMINATED#film2",
                 "FilmName": "FilmName2",
+                "IMDbID": "0234567",
                 "DiscordUserID": "UserB",
                 "CastVotes": 3,
                 "AttendanceVotes": 3,
@@ -249,6 +251,7 @@ class TestFilmBot(unittest.TestCase):
             {
                 "SK": "FILM#NOMINATED#film3",
                 "FilmName": "FilmName3",
+                "IMDbID": "0345678",
                 "DiscordUserID": "UserC",
                 "CastVotes": 2,
                 "AttendanceVotes": 3,
@@ -258,6 +261,7 @@ class TestFilmBot(unittest.TestCase):
             {
                 "SK": "FILM#NOMINATED#film4",
                 "FilmName": "FilmName4",
+                "IMDbID": "03456789",
                 "DiscordUserID": "UserD",
                 "CastVotes": 2,
                 "AttendanceVotes": 4,
@@ -267,6 +271,7 @@ class TestFilmBot(unittest.TestCase):
             {
                 "SK": "FILM#NOMINATED#film5",
                 "FilmName": "FilmName5",
+                "IMDbID": "04567890",
                 "DiscordUserID": "UserE",
                 "CastVotes": 2,
                 "AttendanceVotes": 4,
@@ -276,6 +281,7 @@ class TestFilmBot(unittest.TestCase):
             {
                 "SK": f"FILM#WATCHED#{d.isoformat()}#film6",
                 "FilmName": "FilmName6",
+                "IMDbID": "05678901",
                 "DiscordUserID": "UserF",
                 "CastVotes": 10,
                 "AttendanceVotes": 9,
@@ -288,6 +294,7 @@ class TestFilmBot(unittest.TestCase):
             Film(
                 FilmID="film1",
                 FilmName="FilmName1",
+                IMDbID=None,
                 DiscordUserID="UserA",
                 CastVotes=0,
                 AttendanceVotes=7,
@@ -298,6 +305,7 @@ class TestFilmBot(unittest.TestCase):
             Film(
                 FilmID="film2",
                 FilmName="FilmName2",
+                IMDbID="0234567",
                 DiscordUserID="UserB",
                 CastVotes=3,
                 AttendanceVotes=3,
@@ -308,6 +316,7 @@ class TestFilmBot(unittest.TestCase):
             Film(
                 FilmID="film4",
                 FilmName="FilmName4",
+                IMDbID="03456789",
                 DiscordUserID="UserD",
                 CastVotes=2,
                 AttendanceVotes=4,
@@ -318,6 +327,7 @@ class TestFilmBot(unittest.TestCase):
             Film(
                 FilmID="film5",
                 FilmName="FilmName5",
+                IMDbID="04567890",
                 DiscordUserID="UserE",
                 CastVotes=2,
                 AttendanceVotes=4,
@@ -328,6 +338,7 @@ class TestFilmBot(unittest.TestCase):
             Film(
                 FilmID="film3",
                 FilmName="FilmName3",
+                IMDbID="0345678",
                 DiscordUserID="UserC",
                 CastVotes=2,
                 AttendanceVotes=3,
@@ -361,6 +372,7 @@ class TestFilmBot(unittest.TestCase):
                 "SK": "FILM#NOMINATED#film1",
                 "FilmName": "FilmName1",
                 "DiscordUserID": "UserA",
+                "IMDbID": "0123",
                 "CastVotes": 0,
                 "AttendanceVotes": 7,
                 "UsersAttended": None,
@@ -369,6 +381,7 @@ class TestFilmBot(unittest.TestCase):
             {
                 "SK": "FILM#NOMINATED#film2",
                 "FilmName": "FilmName2",
+                "IMDbID": "0124",
                 "DiscordUserID": "UserB",
                 "CastVotes": 3,
                 "AttendanceVotes": 3,
@@ -378,6 +391,7 @@ class TestFilmBot(unittest.TestCase):
             {
                 "SK": f"FILM#WATCHED#{(d + timedelta(seconds=1)).isoformat()}#film3",
                 "FilmName": "FilmName3",
+                "IMDbID": "0125",
                 "DiscordUserID": "UserC",
                 "CastVotes": 2,
                 "AttendanceVotes": 4,
@@ -387,6 +401,7 @@ class TestFilmBot(unittest.TestCase):
             {
                 "SK": f"FILM#WATCHED#{d.isoformat()}#film4",
                 "FilmName": "FilmName4",
+                "IMDbID": "0126",
                 "DiscordUserID": "UserD",
                 "CastVotes": 10,
                 "AttendanceVotes": 9,
@@ -399,6 +414,7 @@ class TestFilmBot(unittest.TestCase):
             Film(
                 FilmID="film1",
                 FilmName="FilmName1",
+                IMDbID="0123",
                 DiscordUserID="UserA",
                 CastVotes=0,
                 AttendanceVotes=7,
@@ -409,6 +425,7 @@ class TestFilmBot(unittest.TestCase):
             Film(
                 FilmID="film3",
                 FilmName="FilmName3",
+                IMDbID="0125",
                 DiscordUserID="UserC",
                 CastVotes=2,
                 AttendanceVotes=4,
@@ -419,6 +436,7 @@ class TestFilmBot(unittest.TestCase):
             Film(
                 FilmID="film2",
                 FilmName="FilmName2",
+                IMDbID="0124",
                 DiscordUserID="UserB",
                 CastVotes=3,
                 AttendanceVotes=3,
@@ -429,6 +447,7 @@ class TestFilmBot(unittest.TestCase):
             Film(
                 FilmID="film4",
                 FilmName="FilmName4",
+                IMDbID="0126",
                 DiscordUserID="UserD",
                 CastVotes=10,
                 AttendanceVotes=9,
@@ -451,6 +470,7 @@ class TestFilmBot(unittest.TestCase):
 
     def test_nominate_film(self):
         user_id1 = "user1"
+        imdb1 = "012341"
         film_id1 = str(uuid1())
         film_name1 = "My Film"
         time1 = datetime(2001, 1, 2, 3, 4, 5, 123)
@@ -461,6 +481,7 @@ class TestFilmBot(unittest.TestCase):
         filmbot.nominate_film(
             DiscordUserID=user_id1,
             FilmName=film_name1,
+            IMDbID=imdb1,
             NewFilmID=film_id1,
             DateTime=time1,
         )
@@ -473,6 +494,7 @@ class TestFilmBot(unittest.TestCase):
                         "SK": f"FILM#NOMINATED#{film_id1}",
                         "FilmName": film_name1,
                         "DiscordUserID": user_id1,
+                        "IMDbID": imdb1,
                         "CastVotes": 0,
                         "AttendanceVotes": 0,
                         "UsersAttended": None,
@@ -490,10 +512,12 @@ class TestFilmBot(unittest.TestCase):
 
         # Check nominating fails when you already have a nomination
         film_name2 = "My Film 2: The Sequel"
+        imdb2 = "012342"
         with self.assertRaises(UserError):
             filmbot.nominate_film(
                 DiscordUserID=user_id1,
                 FilmName=film_name2,
+                IMDbID=imdb2,
                 NewFilmID=film_id1,
                 DateTime=time1,
             )
@@ -504,6 +528,7 @@ class TestFilmBot(unittest.TestCase):
         filmbot.nominate_film(
             DiscordUserID=user_id2,
             FilmName=film_name2,
+            IMDbID=imdb2,
             NewFilmID=film_id2,
             DateTime=time2,
         )
@@ -514,6 +539,7 @@ class TestFilmBot(unittest.TestCase):
                     "SK": f"FILM#NOMINATED#{film_id1}",
                     "FilmName": film_name1,
                     "DiscordUserID": user_id1,
+                    "IMDbID": imdb1,
                     "CastVotes": 0,
                     "AttendanceVotes": 0,
                     "UsersAttended": None,
@@ -522,6 +548,7 @@ class TestFilmBot(unittest.TestCase):
                 {
                     "SK": f"FILM#NOMINATED#{film_id2}",
                     "FilmName": film_name2,
+                    "IMDbID": imdb2,
                     "DiscordUserID": user_id2,
                     "CastVotes": 0,
                     "AttendanceVotes": 0,
@@ -547,10 +574,12 @@ class TestFilmBot(unittest.TestCase):
         # Check we can't reuse film IDs
         user_id3 = "user3"
         film_name3 = "My Film 3: The Return of The Unit Test"
+        imdb3 = "012343"
         with self.assertRaises(UserError):
             filmbot.nominate_film(
                 DiscordUserID=user_id3,
                 FilmName=film_name3,
+                IMDbID=imdb3,
                 NewFilmID=film_id1,
                 DateTime=time1,
             )
@@ -563,6 +592,7 @@ class TestFilmBot(unittest.TestCase):
         filmbot2.nominate_film(
             DiscordUserID=user_id1,
             FilmName=film_name1,
+            IMDbID=imdb1,
             NewFilmID=film_id1,
             DateTime=time1,
         )
@@ -574,6 +604,7 @@ class TestFilmBot(unittest.TestCase):
                     {
                         "SK": f"FILM#NOMINATED#{film_id1}",
                         "FilmName": film_name1,
+                        "IMDbID": imdb1,
                         "DiscordUserID": user_id1,
                         "CastVotes": 0,
                         "AttendanceVotes": 0,
@@ -583,6 +614,7 @@ class TestFilmBot(unittest.TestCase):
                     {
                         "SK": f"FILM#NOMINATED#{film_id2}",
                         "FilmName": film_name2,
+                        "IMDbID": imdb2,
                         "DiscordUserID": user_id2,
                         "CastVotes": 0,
                         "AttendanceVotes": 0,
@@ -606,6 +638,7 @@ class TestFilmBot(unittest.TestCase):
                     {
                         "SK": f"FILM#NOMINATED#{film_id1}",
                         "FilmName": film_name1,
+                        "IMDbID": imdb1,
                         "DiscordUserID": user_id1,
                         "CastVotes": 0,
                         "AttendanceVotes": 0,
@@ -633,6 +666,11 @@ class TestFilmBot(unittest.TestCase):
         film_id1 = "Film1"
         film_id2 = "Film2"
         film_id3 = "Film3"
+        imdb1 = "0121"
+        imdb2 = "0122"
+        imdb3 = "0123"
+        imdb4 = "0124"
+        imdb5 = "0125"
         film_watched = "Film4"
         d = datetime(2010, 1, 2, 3, 4, 5, 678)
         ages_ago = d - timedelta(days=100)
@@ -641,6 +679,7 @@ class TestFilmBot(unittest.TestCase):
                 {
                     "SK": f"FILM#NOMINATED#{film_id1}",
                     "FilmName": "My Film 1",
+                    "IMDbID": imdb1,
                     "DiscordUserID": user_id1,
                     "CastVotes": 0,
                     "AttendanceVotes": 0,
@@ -650,6 +689,7 @@ class TestFilmBot(unittest.TestCase):
                 {
                     "SK": f"FILM#NOMINATED#{film_id2}",
                     "FilmName": "My Film 2",
+                    "IMDbID": imdb2,
                     "DiscordUserID": user_id2,
                     "CastVotes": 0,
                     "AttendanceVotes": 0,
@@ -659,6 +699,7 @@ class TestFilmBot(unittest.TestCase):
                 {
                     "SK": f"FILM#NOMINATED#{film_id3}",
                     "FilmName": "My Film 3",
+                    "IMDbID": imdb3,
                     "DiscordUserID": "dummy",
                     "CastVotes": 0,
                     "AttendanceVotes": 0,
@@ -668,6 +709,7 @@ class TestFilmBot(unittest.TestCase):
                 {
                     "SK": f"FILM#WATCHED#{ages_ago.isoformat()}#Super-old-film",
                     "FilmName": "My Film 4 (Watched)",
+                    "IMDbID": imdb4,
                     "DiscordUserID": user_id1,
                     "CastVotes": 0,
                     "AttendanceVotes": 0,
@@ -677,6 +719,7 @@ class TestFilmBot(unittest.TestCase):
                 {
                     "SK": f"FILM#WATCHED#{d.isoformat()}#{film_watched}",
                     "FilmName": "My Film 5 (Watched)",
+                    "IMDbID": imdb5,
                     "DiscordUserID": user_id1,
                     "CastVotes": 0,
                     "AttendanceVotes": 0,
@@ -859,6 +902,7 @@ class TestFilmBot(unittest.TestCase):
                 Film(
                     FilmID=film_id1,
                     FilmName="My Film 1",
+                    IMDbID=imdb1,
                     DiscordUserID=user_id1,
                     CastVotes=1,
                     AttendanceVotes=0,
@@ -898,6 +942,7 @@ class TestFilmBot(unittest.TestCase):
             Film(
                 FilmID=film_id1,
                 FilmName="My Film 1",
+                IMDbID=imdb1,
                 DiscordUserID=user_id1,
                 CastVotes=1,
                 AttendanceVotes=0,
