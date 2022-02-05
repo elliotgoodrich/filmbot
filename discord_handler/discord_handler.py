@@ -20,6 +20,18 @@ APPLICATION_COMMAND_AUTOCOMPLETE_RESULT = 8
 
 EPHEMERAL_FLAG = 64
 
+ACTION_ROW = 1
+BUTTON = 2
+SELECT_MENU = 3
+
+PRIMARY_STYLE = 1
+SECONDARY_STYLE = 2
+SUCCESS_STYLE = 3
+DANGER_STYLE = 4
+LINK_STYLE = 5
+
+MSG_COMPONENT_ATTENDANCE_ID = "register_attendance"
+
 
 def make_client(region_name):
     return boto3.client("dynamodb", region_name=region_name)
@@ -64,6 +76,26 @@ def display_nomination(nomination):
         else ""
     )
     return f"  {position}. <@{n.DiscordUserID}> {n.FilmName} ({vote_count} vote{s}){imdb}"
+
+
+def register_attendance(*, FilmBot, DiscordUserID, DateTime):
+    status = FilmBot.record_attendance_vote(
+        DiscordUserID=DiscordUserID, DateTime=DateTime
+    )
+    response = {
+        "type": CHANNEL_MESSAGE_WITH_SOURCE,
+        "data": {
+            "content": (
+                f"<@{DiscordUserID}> has attended"
+                if status == AttendanceStatus.REGISTERED
+                else f"Your attendance has already been recorded"
+            )
+        },
+    }
+    # Don't allow users to flood the chat with `/here` commands
+    if status == AttendanceStatus.ALREADY_REGISTERED:
+        response["data"]["flags"] = EPHEMERAL_FLAG
+    return response
 
 
 def handle_application_command(event, region_name):
@@ -167,30 +199,28 @@ def handle_application_command(event, region_name):
             "data": {
                 "content": (
                     f"Started watching {film.FilmName}!\n\n"
-                    + f"Everyone other than <@{user_id}> should record their attendance using `/here`.\n\n"
-                    + f"<@{film.DiscordUserID}> can now nominated their next suggestion with `/nominate`"
-                )
+                    + f"Everyone other than <@{user_id}> should record their attendance below or using `/here`.\n\n"
+                    + f"<@{film.DiscordUserID}> can now nominated their next suggestion with `/nominate`.\n"
+                ),
+                "components": [
+                    {
+                        "type": ACTION_ROW,
+                        "components": [
+                            {
+                                "type": BUTTON,
+                                "label": "Register Attendance",
+                                "style": PRIMARY_STYLE,
+                                "custom_id": MSG_COMPONENT_ATTENDANCE_ID,
+                            }
+                        ],
+                    }
+                ],
             },
         }
     elif command == "here":
-        status = filmbot.record_attendance_vote(
-            DiscordUserID=user_id, DateTime=now
+        return register_attendance(
+            FilmBot=filmbot, DiscordUserID=user_id, DateTime=now
         )
-        response = {
-            "type": CHANNEL_MESSAGE_WITH_SOURCE,
-            "data": {
-                "content": (
-                    f"<@{user_id}> has attended"
-                    if status == AttendanceStatus.REGISTERED
-                    else f"Your attendance has already been recorded"
-                )
-            },
-        }
-
-        # Don't allow users to flood the chat with `/here` commands
-        if status == AttendanceStatus.ALREADY_REGISTERED:
-            response["data"]["flags"] = EPHEMERAL_FLAG
-        return response
     else:
         raise Exception(f"Unknown application command (/{command})")
 
@@ -272,6 +302,28 @@ def handle_autocomplete(event, region_name):
         raise Exception(f"Autocomplete not supported for /{command}")
 
 
+def handle_message_component(event, region_name):
+    body = event["body-json"]
+    now = datetime.utcnow()
+    component_type = body["data"]["component_type"]
+    if component_type != BUTTON:
+        raise Exception(f"Unknown message component ({component_type})!")
+
+    custom_id = body["data"]["custom_id"]
+    if custom_id != MSG_COMPONENT_ATTENDANCE_ID:
+        raise Exception(
+            f"Unknown 'custom_id' for button component ({custom_id})!"
+        )
+
+    filmbot = FilmBot(
+        DynamoDBClient=make_client(region_name), GuildID=body["guild_id"]
+    )
+    user_id = body["member"]["user"]["id"]
+    return register_attendance(
+        FilmBot=filmbot, DiscordUserID=user_id, DateTime=now
+    )
+
+
 def handle_discord(event, region_name):
     body = event["body-json"]
     type = body["type"]
@@ -290,7 +342,17 @@ def handle_discord(event, region_name):
                 },
             }
     elif type == MESSAGE_COMPONENT:
-        raise Exception(f"Unknown type ({type})!")
+        try:
+            return handle_message_component(event, region_name)
+        except UserError as e:
+            # If we get a `UserError` it's something we can display to the user
+            return {
+                "type": CHANNEL_MESSAGE_WITH_SOURCE,
+                "data": {
+                    "content": str(e),
+                    "flags": EPHEMERAL_FLAG,
+                },
+            }
     elif type == APPLICATION_COMMAND_AUTOCOMPLETE:
         return handle_autocomplete(event, region_name)
     else:
