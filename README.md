@@ -44,6 +44,8 @@ fields:
 The records with sort key starting with `"FILM.*"` contains the following fields:
   * `FilmName` is a string representation of the film's name
   * `DiscordUserID` is a string matching the users's Discord ID who nominated this film
+  * `IMDbID` is `NULL` or an IMDB ID (e.g. "0113375")
+  * `DiscordUserID` is a string matching the users's Discord ID who nominated this film
   * `CastVotes` is a non-negative integer representing the number of votes cast for this film
   * `AttendanceVotes` is a non-negative integer representing the number of attendance votes for the user who nominated this film
   * `UsersAttended` is `NULL` for unwatched films or a non-empty set containing the user's Discord IDs of those who have attended (DynamoDB does not support empty string sets)

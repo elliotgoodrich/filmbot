@@ -2,7 +2,9 @@ import boto3
 from filmbot import FilmBot, VotingStatus, AttendanceStatus
 from UserError import UserError
 from datetime import datetime
+from itertools import islice
 from uuid import uuid1
+from imdb import IMDb
 
 PING = 1
 APPLICATION_COMMAND = 2
@@ -35,12 +37,33 @@ def films_to_choices(films):
     )
 
 
+def encode_IMDB(imdb_id, film_name):
+    return f"IMDB:{imdb_id}:{film_name}"
+
+
+def decode_film(film_name_or_id):
+    if film_name_or_id.startswith("IMDB:"):
+        parts = film_name_or_id.split(":", 3)
+        assert parts[0] == "IMDB"
+        imdb_id = parts[1]
+        film_name = parts[2]
+        return film_name, imdb_id
+    else:
+        return film_name_or_id, None
+
+
 def display_nomination(nomination):
     position = nomination[0] + 1
     n = nomination[1]
     vote_count = n.CastVotes + n.AttendanceVotes
     s = "" if vote_count == 1 else "s"
-    return f"  {position}. <@{n.DiscordUserID}> {n.FilmName} ({vote_count} vote{s})"
+    # Surround links with <> to avoid Discord previewing the links
+    imdb = (
+        f" [IMDB](<https://imdb.com/title/tt{n.IMDbID}>)"
+        if n.IMDbID is not None
+        else ""
+    )
+    return f"  {position}. <@{n.DiscordUserID}> {n.FilmName} ({vote_count} vote{s}){imdb}"
 
 
 def handle_application_command(event, region_name):
@@ -61,11 +84,14 @@ def handle_application_command(event, region_name):
     )
     user_id = body["member"]["user"]["id"]
     if command == "nominate":
-        film_name = body["data"]["options"][0]["value"]
+        film_name_or_imdb = body["data"]["options"][0]["value"]
+        film_name, imdb_id = decode_film(film_name_or_imdb)
+
         film_id = str(uuid1())
         filmbot.nominate_film(
             DiscordUserID=user_id,
             FilmName=film_name,
+            IMDbID=imdb_id,
             NewFilmID=film_id,
             DateTime=now,
         )
@@ -73,7 +99,7 @@ def handle_application_command(event, region_name):
             "type": CHANNEL_MESSAGE_WITH_SOURCE,
             "data": {
                 "content": (
-                    f"<@{user_id}> has successfully nominated {film_name}. "
+                    f"<@{user_id}> has successfully nominated {film_name}.\n\n"
                     + "The current list of nominations are:\n"
                     + "\n".join(
                         map(
@@ -171,14 +197,44 @@ def handle_application_command(event, region_name):
 
 def handle_autocomplete(event, region_name):
     """
-    Handle the autocomplete for 2 of the application commands that we support:
+    Handle the autocomplete for 3 of the application commands that we support:
+      * /nominate [FilmName]
       * /vote [FilmID]
       * /watch [FilmID]
     """
     body = event["body-json"]
     command = body["data"]["name"]
     guild_id = body["guild_id"]
-    if command == "vote":
+    if command == "nominate":
+        ia = IMDb()
+        partial_film_name = body["data"]["options"][0]["value"]
+
+        # Get 2x the number of results we expect as `search_movie` also
+        # finds TV shows etc. and we will trim it down to `MAX_RESULTS`
+        # afterwards.
+        MAX_RESULTS = 5
+        results = ia.search_movie(partial_film_name, results=MAX_RESULTS * 2)
+        return {
+            "type": APPLICATION_COMMAND_AUTOCOMPLETE_RESULT,
+            "data": {
+                "choices": list(
+                    map(
+                        lambda r: {
+                            "name": f"{r['title']} ({r['year']})",
+                            "value": encode_IMDB(
+                                r.movieID, f"{r['title']} ({r['year']})"
+                            ),
+                        },
+                        islice(
+                            filter(lambda r: r["kind"] == "movie", results),
+                            MAX_RESULTS,
+                        ),
+                    )
+                )
+            },
+        }
+
+    elif command == "vote":
         user_id = body["member"]["user"]["id"]
         filmbot = FilmBot(
             DynamoDBClient=make_client(region_name), GuildID=guild_id

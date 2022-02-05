@@ -15,6 +15,7 @@ USER_AttendanceVoteID = "AttendanceVoteID"
 FILM_PK = "PK"
 FILM_SK = "SK"
 FILM_FilmName = "FilmName"
+FILM_IMDbID = "IMDbID"
 FILM_DiscordUserID = "DiscordUserID"
 FILM_CastVotes = "CastVotes"
 FILM_AttendanceVotes = "AttendanceVotes"
@@ -73,6 +74,7 @@ class Film:
         *,
         FilmID,
         FilmName,
+        IMDbID,
         DiscordUserID,
         CastVotes,
         AttendanceVotes,
@@ -82,6 +84,7 @@ class Film:
     ):
         self.FilmID = FilmID
         self.FilmName = FilmName
+        self.IMDbID = IMDbID
         self.DiscordUserID = DiscordUserID
         self.CastVotes = CastVotes
         self.AttendanceVotes = AttendanceVotes
@@ -101,6 +104,7 @@ class Film:
         return (
             self.FilmID == other.FilmID
             and self.FilmName == other.FilmName
+            and self.IMDbID == other.IMDbID
             and self.DiscordUserID == other.DiscordUserID
             and self.CastVotes == other.CastVotes
             and self.AttendanceVotes == other.AttendanceVotes
@@ -114,6 +118,7 @@ class Film:
             f"SK={self.SK}\n"
             f"FilmID={self.FilmID}\n"
             f"FilmName={self.FilmName}\n"
+            f"IMDbID={self.IMDbID}\n"
             f"DiscordUserID={self.DiscordUserID}\n"
             f"CastVotes={self.CastVotes}\n"
             f"AttendanceVotes={self.AttendanceVotes}\n"
@@ -127,6 +132,7 @@ class Film:
             "PK": {"S": GuildID},
             "SK": {"S": self.SK},
             "FilmName": {"S": self.FilmName},
+            "IMDbID": keyed(self.IMDbID),
             "DiscordUserID": {"S": self.DiscordUserID},
             "CastVotes": {"N": str(self.CastVotes)},
             "AttendanceVotes": {"N": str(self.AttendanceVotes)},
@@ -146,6 +152,7 @@ class Film:
         return Film(
             FilmID=sk_parts[-1],
             FilmName=dict[FILM_FilmName]["S"],
+            IMDbID=unkeyed(dict[FILM_IMDbID]),
             DiscordUserID=dict[FILM_DiscordUserID]["S"],
             CastVotes=int(dict[FILM_CastVotes]["N"]),
             AttendanceVotes=int(dict[FILM_AttendanceVotes]["N"]),
@@ -366,17 +373,26 @@ class FilmBot:
 
         return sorted(films, key=lambda n: n.DateNominated)
 
-    def nominate_film(self, *, DiscordUserID, FilmName, NewFilmID, DateTime):
+    def nominate_film(
+        self,
+        *,
+        DiscordUserID,
+        FilmName,
+        NewFilmID,
+        IMDbID,
+        DateTime,
+    ):
         """
-        Attempt to nominate the specified `FilmName` as the film choice for the
-        specified `DiscordUserID`.  If `DiscordUserID` is not a registered user
-        then register them.  If `DiscordUserID` already has a nomination then
-        throw an exception.
+        Attempt to nominate the specified `FilmName` as the film choice, with
+        the specified `IMDbID` for the specified `DiscordUserID`.  If
+        `DiscordUserID` is not a registered user then register them.  If
+        `DiscordUserID` already has a nomination then throw an exception.
         """
 
         new_film = Film(
             FilmID=NewFilmID,
             FilmName=FilmName,
+            IMDbID=IMDbID,
             DiscordUserID=DiscordUserID,
             CastVotes=0,
             AttendanceVotes=0,
