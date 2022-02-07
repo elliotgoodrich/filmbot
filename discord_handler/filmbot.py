@@ -49,6 +49,9 @@ class User:
             and self.AttendanceVoteID == other.AttendanceVoteID
         )
 
+    def __hash__(self):
+        return hash(self.DiscordUserID)
+
     def toDict(self, *, GuildID):
         return {
             "PK": {"S": GuildID},

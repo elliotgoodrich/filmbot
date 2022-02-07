@@ -9,6 +9,7 @@
 #   - /peek
 #   - /watch
 #   - /here
+#   - /naughty
 # so that they are visible and accessible within Discord.
 #
 # Usage
@@ -76,6 +77,11 @@ commands = [
         "name": "here",
         "type": 1,
         "description": "Register attendance for the film currently being watched",
+    },
+    {
+        "name": "naughty",
+        "type": 1,
+        "description": "Display the users with outstanding tasks",
     },
 ]
 

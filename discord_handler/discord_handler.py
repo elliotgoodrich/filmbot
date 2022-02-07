@@ -78,6 +78,10 @@ def display_nomination(nomination):
     return f"  {position}. <@{n.DiscordUserID}> {n.FilmName} ({vote_count} vote{s}){imdb}"
 
 
+def display_user(user):
+    return f"  - <@{user.DiscordUserID}>"
+
+
 def register_attendance(*, FilmBot, DiscordUserID, DateTime):
     status = FilmBot.record_attendance_vote(
         DiscordUserID=DiscordUserID, DateTime=DateTime
@@ -100,12 +104,13 @@ def register_attendance(*, FilmBot, DiscordUserID, DateTime):
 
 def handle_application_command(event, region_name):
     """
-    Handle the 4 application commands that we support:
+    Handle the 6 application commands that we support:
       * /nominate [FilmName]
       * /vote [FilmID]
       * /peek
       * /watch [FilmID]
       * /here
+      * /naughty
     """
     now = datetime.utcnow()
     body = event["body-json"]
@@ -221,6 +226,31 @@ def handle_application_command(event, region_name):
         return register_attendance(
             FilmBot=filmbot, DiscordUserID=user_id, DateTime=now
         )
+    elif command == "naughty":
+        users = filmbot.get_users().values()
+        message = []
+        toNominate = set(filter(lambda u: u.NominatedFilmID is None, users))
+        toVote = set(filter(lambda u: u.VoteID is None, users))
+        if toNominate:
+            message.append("These users need to nominate:")
+            message += map(display_user, toNominate)
+            if toVote:
+                # Add a separating newline
+                message.append("")
+
+        if toVote:
+            message.append("These users need to vote:")
+            message += map(display_user, toVote)
+        elif not toNominate:
+            message = ["There is no outstanding tasks."]
+
+        return {
+            "type": CHANNEL_MESSAGE_WITH_SOURCE,
+            "data": {
+                "content": "\n".join(message),
+                "flags": EPHEMERAL_FLAG,
+            },
+        }
     else:
         raise Exception(f"Unknown application command (/{command})")
 
