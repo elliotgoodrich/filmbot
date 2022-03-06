@@ -1,4 +1,3 @@
-import boto3
 from filmbot import FilmBot, VotingStatus, AttendanceStatus
 from UserError import UserError
 from datetime import datetime
@@ -31,10 +30,6 @@ DANGER_STYLE = 4
 LINK_STYLE = 5
 
 MSG_COMPONENT_ATTENDANCE_ID = "register_attendance"
-
-
-def make_client(region_name):
-    return boto3.client("dynamodb", region_name=region_name)
 
 
 def films_to_choices(films):
@@ -102,7 +97,7 @@ def register_attendance(*, FilmBot, DiscordUserID, DateTime):
     return response
 
 
-def handle_application_command(event, region_name):
+def handle_application_command(event, client):
     """
     Handle the 6 application commands that we support:
       * /nominate [FilmName]
@@ -116,9 +111,7 @@ def handle_application_command(event, region_name):
     body = event["body-json"]
     command = body["data"]["name"]
     guild_id = body["guild_id"]
-    filmbot = FilmBot(
-        DynamoDBClient=make_client(region_name), GuildID=guild_id
-    )
+    filmbot = FilmBot(DynamoDBClient=client, GuildID=guild_id)
     user_id = body["member"]["user"]["id"]
     if command == "nominate":
         film_name_or_imdb = body["data"]["options"][0]["value"]
@@ -255,7 +248,7 @@ def handle_application_command(event, region_name):
         raise Exception(f"Unknown application command (/{command})")
 
 
-def handle_autocomplete(event, region_name):
+def handle_autocomplete(event, client):
     """
     Handle the autocomplete for 3 of the application commands that we support:
       * /nominate [FilmName]
@@ -267,6 +260,7 @@ def handle_autocomplete(event, region_name):
     guild_id = body["guild_id"]
     if command == "nominate":
         ia = IMDb()
+
         partial_film_name = body["data"]["options"][0]["value"]
 
         # Get 2x the number of results we expect as `search_movie` also
@@ -296,9 +290,7 @@ def handle_autocomplete(event, region_name):
 
     elif command == "vote":
         user_id = body["member"]["user"]["id"]
-        filmbot = FilmBot(
-            DynamoDBClient=make_client(region_name), GuildID=guild_id
-        )
+        filmbot = FilmBot(DynamoDBClient=client, GuildID=guild_id)
         nominations = filmbot.get_nominations()
 
         # Reorder to have the oldest film show up first and filter out
@@ -315,9 +307,7 @@ def handle_autocomplete(event, region_name):
             },
         }
     elif command == "watch":
-        filmbot = FilmBot(
-            DynamoDBClient=make_client(region_name), GuildID=guild_id
-        )
+        filmbot = FilmBot(DynamoDBClient=client, GuildID=guild_id)
 
         # Keep the films ordered with the highest nominated film at the top
         # as this is most likely the one we are going to watch
@@ -332,7 +322,7 @@ def handle_autocomplete(event, region_name):
         raise Exception(f"Autocomplete not supported for /{command}")
 
 
-def handle_message_component(event, region_name):
+def handle_message_component(event, client):
     body = event["body-json"]
     now = datetime.utcnow()
     component_type = body["data"]["component_type"]
@@ -345,23 +335,21 @@ def handle_message_component(event, region_name):
             f"Unknown 'custom_id' for button component ({custom_id})!"
         )
 
-    filmbot = FilmBot(
-        DynamoDBClient=make_client(region_name), GuildID=body["guild_id"]
-    )
+    filmbot = FilmBot(DynamoDBClient=client, GuildID=body["guild_id"])
     user_id = body["member"]["user"]["id"]
     return register_attendance(
         FilmBot=filmbot, DiscordUserID=user_id, DateTime=now
     )
 
 
-def handle_discord(event, region_name):
+def handle_discord(event, client):
     body = event["body-json"]
     type = body["type"]
     if type == PING:
         return {"type": PONG}
     elif type == APPLICATION_COMMAND:
         try:
-            return handle_application_command(event, region_name)
+            return handle_application_command(event, client)
         except UserError as e:
             # If we get a `UserError` it's something we can display to the user
             return {
@@ -373,7 +361,7 @@ def handle_discord(event, region_name):
             }
     elif type == MESSAGE_COMPONENT:
         try:
-            return handle_message_component(event, region_name)
+            return handle_message_component(event, client)
         except UserError as e:
             # If we get a `UserError` it's something we can display to the user
             return {
@@ -384,6 +372,6 @@ def handle_discord(event, region_name):
                 },
             }
     elif type == APPLICATION_COMMAND_AUTOCOMPLETE:
-        return handle_autocomplete(event, region_name)
+        return handle_autocomplete(event, client)
     else:
         raise Exception(f"Unknown type ({type})!")

@@ -13,11 +13,16 @@
 
 import os
 import json
+import boto3
 from discord_handler import handle_discord
 from nacl.signing import VerifyKey
 from nacl.exceptions import BadSignatureError
 
 MESSAGE_WITH_SOURCE = 4
+
+# Initialize `boto3` outside of `lambda_handler` as it can be reused
+# in AWS Lambda "hot starts".
+client = boto3.client("dynamodb", region_name=os.environ["AWS_REGION"])
 
 
 def verify_signature(event):
@@ -35,6 +40,6 @@ def verify_signature(event):
 def lambda_handler(event, context):
     print(f"in={json.dumps(event)}")
     verify_signature(event)
-    response = handle_discord(event, os.environ["AWS_REGION"])
+    response = handle_discord(event, client)
     print(f"out={json.dumps(response)}")
     return response
