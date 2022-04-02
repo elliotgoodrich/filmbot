@@ -359,6 +359,85 @@ class TestFilmBot(unittest.TestCase):
 
         assert count == factorial(len(input_films))
 
+    def test_get_watched_films(self):
+        guild = "TEST-GUILD"
+        filmbot = FilmBot(DynamoDBClient=self.dynamodb_client, GuildID=guild)
+
+        # Get that it works with 0 films
+        self.assertEqual(filmbot.get_watched_films(), [])
+
+        # Check that it works a few films
+        d = datetime(2001, 1, 1, 5, 0, 0, 123)
+        e = d + timedelta(seconds=1)
+        input_films = [
+            {
+                "SK": f"FILM#WATCHED#{d.isoformat()}#film1",
+                "FilmName": "FilmName1",
+                "IMDbID": "05678901",
+                "DiscordUserID": "UserA",
+                "CastVotes": 1,
+                "AttendanceVotes": 2,
+                "UsersAttended": set(["A", "B", "C"]),
+                "DateNominated": (d - timedelta(seconds=10)).isoformat(),
+            },
+            {
+                "SK": "FILM#NOMINATED#film2",
+                "FilmName": "FilmName2",
+                "IMDbID": None,
+                "DiscordUserID": "UserB",
+                "CastVotes": 3,
+                "AttendanceVotes": 4,
+                "UsersAttended": None,
+                "DateNominated": d.isoformat(),
+            },
+            {
+                "SK": f"FILM#WATCHED#{(d - timedelta(seconds=1)).isoformat()}#film3",
+                "FilmName": "FilmName3",
+                "IMDbID": "123456",
+                "DiscordUserID": "UserC",
+                "CastVotes": 5,
+                "AttendanceVotes": 6,
+                "UsersAttended": set(["D"]),
+                "DateNominated": (d - timedelta(seconds=5)).isoformat(),
+            },
+        ]
+
+        expected = [
+            Film(
+                FilmID="film1",
+                FilmName="FilmName1",
+                IMDbID="05678901",
+                DiscordUserID="UserA",
+                CastVotes=1,
+                AttendanceVotes=2,
+                UsersAttended=set(["A", "B", "C"]),
+                DateNominated=d - timedelta(seconds=10),
+                DateWatched=d,
+            ),
+            Film(
+                FilmID="film3",
+                FilmName="FilmName3",
+                IMDbID="123456",
+                DiscordUserID="UserC",
+                CastVotes=5,
+                AttendanceVotes=6,
+                UsersAttended=set(["D"]),
+                DateNominated=d - timedelta(seconds=5),
+                DateWatched=d - timedelta(seconds=1),
+            ),
+        ]
+
+        # Test all permutation of the input to make sure that we are actually
+        # sorting the rows
+        count = 0
+        for input in permutations(input_films):
+            set_db(self.dynamodb_client, {guild: input})
+
+            self.assertEqual(filmbot.get_watched_films(), expected)
+            count += 1
+
+        assert count == factorial(len(input_films))
+
     def test_get_all_films(self):
         guild = "TEST-GUILD"
         filmbot = FilmBot(DynamoDBClient=self.dynamodb_client, GuildID=guild)

@@ -39,7 +39,7 @@ fields:
   * `VoteID` is a string matching a `"FILM#NOMINATED#*"` sort key that represents this user's voted film, or `NULL` if this user has not voted yet in this round
   * `AttendanceVoteID` is a string matching a `"FILM#WATCHED#*.*"` sort key that represents this user's attendance vote for the last watched film, or `NULL` if this user did not watch the latest film
 
-### "FILM.*" Record Format
+### "FILM#*" Record Format
 
 The records with sort key starting with `"FILM.*"` contains the following fields:
   * `FilmName` is a string representation of the film's name

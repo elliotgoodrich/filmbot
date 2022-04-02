@@ -1,9 +1,11 @@
-from filmbot import FilmBot, VotingStatus, AttendanceStatus
+from filmbot import FilmBot, VotingStatus, AttendanceStatus, Film
 from UserError import UserError
 from datetime import datetime
 from itertools import islice
 from uuid import uuid1
 from imdb import IMDb
+
+MAX_MESSAGE_SIZE = 2000
 
 PING = 1
 APPLICATION_COMMAND = 2
@@ -75,6 +77,16 @@ def display_nomination(nomination):
 
 def display_user(user):
     return f"  - <@{user.DiscordUserID}>"
+
+
+def display_watched(f: Film):
+    # Surround links with <> to avoid Discord previewing the links
+    imdb = (
+        f" [IMDB](<https://imdb.com/title/tt{f.IMDbID}>)"
+        if f.IMDbID is not None
+        else ""
+    )
+    return f"  • {f.DateWatched.strftime('%Y-%m-%d')} {f.FilmName}{imdb} - <@{f.DiscordUserID}>"
 
 
 def register_attendance(*, FilmBot, DiscordUserID, DateTime):
@@ -241,6 +253,23 @@ def handle_application_command(event, client):
             "type": CHANNEL_MESSAGE_WITH_SOURCE,
             "data": {
                 "content": "\n".join(message),
+                "flags": EPHEMERAL_FLAG,
+            },
+        }
+    elif command == "history":
+        message = "Here are the films that have been watched:\n"
+        films = filmbot.get_watched_films()
+        for film in films:
+            line = display_watched(film) + "\n"
+            if len(message) + len(line) > MAX_MESSAGE_SIZE:
+                break
+
+            message += line
+
+        return {
+            "type": CHANNEL_MESSAGE_WITH_SOURCE,
+            "data": {
+                "content": message,
                 "flags": EPHEMERAL_FLAG,
             },
         }
