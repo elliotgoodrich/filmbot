@@ -352,6 +352,30 @@ class FilmBot:
             ],
         )
 
+    def get_watched_films(self):
+        """
+        Return an array of watched films ordered by most recently watched.
+        """
+        return list(
+            map(
+                Film.fromDict,
+                self.__query(
+                    {
+                        "TableName": TABLE_NAME,
+                        "ExpressionAttributeValues": {
+                            ":GuildID": {"S": self.guildID},
+                            ":FilmPrefix": {"S": "FILM#WATCHED#"},
+                        },
+                        "KeyConditionExpression": (
+                            f"{FILM_PK} = :GuildID AND "
+                            f"begins_with({FILM_SK}, :FilmPrefix)"
+                        ),
+                        "ScanIndexForward": False,
+                    }
+                ),
+            )
+        )
+
     def get_all_films(self):
         """
         Return an array watched and unwatched films in the order that they were

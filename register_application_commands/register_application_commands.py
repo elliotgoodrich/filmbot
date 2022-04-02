@@ -83,6 +83,11 @@ commands = [
         "type": 1,
         "description": "Display the users with outstanding tasks",
     },
+    {
+        "name": "history",
+        "type": 1,
+        "description": "Display the films that have previously been watched",
+    },
 ]
 
 headers = {"Authorization": f'Bot {config["bot_token"]["value"]}'}
