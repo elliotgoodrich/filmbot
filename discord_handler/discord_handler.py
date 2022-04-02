@@ -32,6 +32,7 @@ DANGER_STYLE = 4
 LINK_STYLE = 5
 
 MSG_COMPONENT_ATTENDANCE_ID = "register_attendance"
+MSG_COMPONENT_SHAME_ID = "shame"
 
 
 def films_to_choices(films):
@@ -87,6 +88,30 @@ def display_watched(f: Film):
         else ""
     )
     return f"  • {f.DateWatched.strftime('%Y-%m-%d')} {f.FilmName}{imdb} - <@{f.DiscordUserID}>"
+
+
+def naughty_message(filmbot):
+    users = filmbot.get_users().values()
+    message = []
+    toNominate = set(filter(lambda u: u.NominatedFilmID is None, users))
+    toVote = set(filter(lambda u: u.VoteID is None, users))
+    if toNominate:
+        message.append("These users need to nominate:")
+        message += map(display_user, toNominate)
+        if toVote:
+            # Add a separating newline
+            message.append("")
+
+    if toVote:
+        message.append("These users need to vote:")
+        message += map(display_user, toVote)
+    elif not toNominate:
+        message = ["There are no outstanding tasks."]
+
+    return {
+        "content": "\n".join(message),
+        "any_tasks": toNominate or toVote,
+    }
 
 
 def register_attendance(*, FilmBot, DiscordUserID, DateTime):
@@ -232,30 +257,31 @@ def handle_application_command(event, client):
             FilmBot=filmbot, DiscordUserID=user_id, DateTime=now
         )
     elif command == "naughty":
-        users = filmbot.get_users().values()
-        message = []
-        toNominate = set(filter(lambda u: u.NominatedFilmID is None, users))
-        toVote = set(filter(lambda u: u.VoteID is None, users))
-        if toNominate:
-            message.append("These users need to nominate:")
-            message += map(display_user, toNominate)
-            if toVote:
-                # Add a separating newline
-                message.append("")
-
-        if toVote:
-            message.append("These users need to vote:")
-            message += map(display_user, toVote)
-        elif not toNominate:
-            message = ["There is no outstanding tasks."]
-
-        return {
+        naughty = naughty_message(filmbot)
+        result = {
             "type": CHANNEL_MESSAGE_WITH_SOURCE,
             "data": {
-                "content": "\n".join(message),
+                "content": naughty["content"],
                 "flags": EPHEMERAL_FLAG,
             },
         }
+
+        # Display a "shame" button only if there are tasks
+        if naughty["any_tasks"]:
+            result["data"]["components"] = [
+                {
+                    "type": ACTION_ROW,
+                    "components": [
+                        {
+                            "type": BUTTON,
+                            "label": "Publically Shame",
+                            "style": DANGER_STYLE,
+                            "custom_id": MSG_COMPONENT_SHAME_ID,
+                        }
+                    ],
+                }
+            ]
+        return result
     elif command == "history":
         message = "Here are the films that have been watched:\n"
         films = filmbot.get_watched_films()
@@ -359,16 +385,22 @@ def handle_message_component(event, client):
         raise Exception(f"Unknown message component ({component_type})!")
 
     custom_id = body["data"]["custom_id"]
-    if custom_id != MSG_COMPONENT_ATTENDANCE_ID:
+    if custom_id == MSG_COMPONENT_ATTENDANCE_ID:
+        filmbot = FilmBot(DynamoDBClient=client, GuildID=body["guild_id"])
+        user_id = body["member"]["user"]["id"]
+        return register_attendance(
+            FilmBot=filmbot, DiscordUserID=user_id, DateTime=now
+        )
+    elif custom_id == MSG_COMPONENT_SHAME_ID:
+        filmbot = FilmBot(DynamoDBClient=client, GuildID=body["guild_id"])
+        return {
+            "type": CHANNEL_MESSAGE_WITH_SOURCE,
+            "data": {"content": naughty_message(filmbot)["content"]},
+        }
+    else:
         raise Exception(
             f"Unknown 'custom_id' for button component ({custom_id})!"
         )
-
-    filmbot = FilmBot(DynamoDBClient=client, GuildID=body["guild_id"])
-    user_id = body["member"]["user"]["id"]
-    return register_attendance(
-        FilmBot=filmbot, DiscordUserID=user_id, DateTime=now
-    )
 
 
 def handle_discord(event, client):
