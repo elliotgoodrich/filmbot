@@ -87,7 +87,7 @@ def display_watched(f: Film):
         if f.IMDbID is not None
         else ""
     )
-    return f"  • {f.DateWatched.strftime('%Y-%m-%d')} {f.FilmName}{imdb} - <@{f.DiscordUserID}>"
+    return f"  • <t:{int(f.DateWatched.timestamp())}:d> {f.FilmName}{imdb} - <@{f.DiscordUserID}>"
 
 
 def naughty_message(filmbot):
