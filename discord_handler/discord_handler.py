@@ -274,7 +274,7 @@ def handle_application_command(event, client):
                     "components": [
                         {
                             "type": BUTTON,
-                            "label": "Publically Shame",
+                            "label": "Publicly Shame",
                             "style": DANGER_STYLE,
                             "custom_id": MSG_COMPONENT_SHAME_ID,
                         }
