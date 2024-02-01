@@ -73,11 +73,11 @@ def display_nomination(nomination):
         if n.IMDbID is not None
         else ""
     )
-    return f"  {position}. <@{n.DiscordUserID}> {n.FilmName} ({vote_count} vote{s}){imdb}"
+    return f"{position}. <@{n.DiscordUserID}> {n.FilmName} ({vote_count} vote{s}){imdb}"
 
 
 def display_user(user):
-    return f"  - <@{user.DiscordUserID}>"
+    return f"- <@{user.DiscordUserID}>"
 
 
 def display_watched(f: Film):
@@ -87,7 +87,7 @@ def display_watched(f: Film):
         if f.IMDbID is not None
         else ""
     )
-    return f"  • <t:{int(f.DateWatched.timestamp())}:d> {f.FilmName}{imdb} - <@{f.DiscordUserID}>"
+    return f"- <t:{int(f.DateWatched.timestamp())}:d> {f.FilmName}{imdb} - <@{f.DiscordUserID}>"
 
 
 def naughty_message(filmbot):
