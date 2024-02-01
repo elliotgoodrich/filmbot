@@ -2,7 +2,7 @@ import unittest
 import boto3
 from math import factorial
 from itertools import permutations
-from moto import mock_dynamodb2
+from moto import mock_dynamodb
 from filmbot import (
     FilmBot,
     TABLE_NAME,
@@ -105,7 +105,7 @@ class snapshot:
 
 
 class TestFilmBot(unittest.TestCase):
-    mock_dynamodb2 = mock_dynamodb2()
+    mock_dynamodb = mock_dynamodb()
 
     def setUp(self):
         """
@@ -115,7 +115,7 @@ class TestFilmBot(unittest.TestCase):
         # Set unlimited length for assertEqual diff lengths
         self.maxDiff = None
 
-        self.mock_dynamodb2.start()
+        self.mock_dynamodb.start()
         boto3.setup_default_session()
         self.dynamodb = boto3.resource("dynamodb", region_name=AWS_REGION)
         self.dynamodb_client = boto3.client("dynamodb", region_name=AWS_REGION)
@@ -134,7 +134,7 @@ class TestFilmBot(unittest.TestCase):
         """
         Unmock `dynamodb2`.
         """
-        self.mock_dynamodb2.stop()
+        self.mock_dynamodb.stop()
         pass
 
     def test_get_users(self):

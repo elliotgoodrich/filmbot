@@ -1,3 +1,2 @@
 black
-moto
-
+moto ~= 3.1
