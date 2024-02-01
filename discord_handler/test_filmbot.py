@@ -1006,9 +1006,9 @@ class TestFilmBot(unittest.TestCase):
 
             # Move the film to the `WATCHED` section
             watched_film = exp[guild1].pop(FILM_1)
-            watched_film[
-                "SK"
-            ] = f"FILM#WATCHED#{good_time.isoformat()}#{film_id1}"
+            watched_film["SK"] = (
+                f"FILM#WATCHED#{good_time.isoformat()}#{film_id1}"
+            )
             watched_film["UsersAttended"] = set([user_id1, user_id2, user_id3])
             exp[guild1].insert(4, watched_film)
             self.assertEqual(grab_db(self.dynamodb_client), exp)
