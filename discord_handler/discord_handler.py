@@ -144,7 +144,7 @@ def handle_application_command(event, client):
       * /here
       * /naughty
     """
-    now = datetime.utcnow()
+    now = datetime.datetime.now(datetime.UTC)
     body = event["body-json"]
     command = body["data"]["name"]
     guild_id = body["guild_id"]
@@ -379,7 +379,7 @@ def handle_autocomplete(event, client):
 
 def handle_message_component(event, client):
     body = event["body-json"]
-    now = datetime.utcnow()
+    now = datetime.datetime.now(datetime.UTC)
     component_type = body["data"]["component_type"]
     if component_type != BUTTON:
         raise Exception(f"Unknown message component ({component_type})!")
