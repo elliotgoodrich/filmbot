@@ -7,6 +7,10 @@
   3. `pip install -r requirements.txt`
   4. `python test_filmbot.py`
 
+## Formatting
+
+  1. `black *.py`
+
 ## Creating AWS Layer
 
 On a Linux x64 machine (e.g. an EC2 Amazon Linux instance)

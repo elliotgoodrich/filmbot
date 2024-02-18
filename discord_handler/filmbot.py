@@ -1,7 +1,7 @@
 from pprint import pprint
 from enum import Enum
 from UserError import UserError
-from datetime import date, timedelta, datetime
+from datetime import timedelta, datetime
 
 TABLE_NAME = "FilmBotTable"
 
@@ -39,7 +39,7 @@ class User:
 
     @property
     def SK(self):
-        return f"USER#{self.DiscordUserID}"
+        return f"DISCORDUSER#{self.DiscordUserID}"
 
     def __eq__(self, other):
         return (
@@ -170,6 +170,20 @@ class Film:
             ),
         )
 
+    @staticmethod
+    def sortKey(film):
+        # Sort by:
+        #   - the highest number of votes
+        #   - if that is the same, then tie break by highest cast votes
+        #   - if that is the same, then tie break by earliest nominated
+        return (
+            [
+                -film.CastVotes - film.AttendanceVotes,
+                -film.CastVotes,
+                film.DateNominated,
+            ],
+        )
+
 
 def extract_SK(sortKeyValue):
     return sortKeyValue.split("#")[-1]
@@ -285,7 +299,7 @@ class FilmBot:
                     "TableName": TABLE_NAME,
                     "ExpressionAttributeValues": {
                         ":GuildID": {"S": self.guildID},
-                        ":UserPrefix": {"S": "USER#"},
+                        ":UserPrefix": {"S": "DISCORDUSER#"},
                     },
                     "KeyConditionExpression": (
                         f"{USER_PK} = :GuildID AND "
@@ -339,17 +353,63 @@ class FilmBot:
             ),
         )
 
-        # Sort by:
-        #   - the highest number of votes
-        #   - if that is the same, then tie break by highest cast votes
-        #   - if that is the same, then tie break by earliest nominated
+        return sorted(nominations, key=Film.sortKey)
+
+    def get_users_by_nomination(self):
+        """Return an array of users with details of their (optionally) nominated films.
+        This array is in the order that they should be watched based on their vote tally.
+        If a user has not nominated then they will be put at the end of the array.
+        """
+
+        # Probably we should be duplicating film data under the user instead of using
+        # NoSQL in a relational way.  But in this case we can grab all users and all
+        # nominations easily and do the mapping ourselves.
+
+        films = {}
+        users = []
+        for result in self.__query(
+            {
+                "TableName": TABLE_NAME,
+                "ExpressionAttributeValues": {
+                    ":GuildID": {"S": self.guildID},
+                    ":UserPrefix": {"S": "DISCORDUSER#"},
+                    ":FilmPrefix": {"S": "FILM#NOMINATED$"},  # '$' == '#' + 1
+                },
+                "KeyConditionExpression": (
+                    f"{FILM_PK} = :GuildID AND "
+                    f"{FILM_SK} BETWEEN :UserPrefix AND :FilmPrefix"
+                ),
+                "ScanIndexForward": False,  # Backwards so we get films first
+            }
+        ):
+            sk_parts = result[FILM_SK]["S"].split("#")
+            if sk_parts[0] == "FILM":
+                assert sk_parts[1] == "NOMINATED"
+                films[sk_parts[-1]] = Film.fromDict(result)
+            elif sk_parts[0] == "DISCORDUSER":
+                # At this point we should have populated all the films so we can lookup
+                # `NominatedFilmID` in `films`
+                user = User.fromDict(result)
+                users.append(
+                    {
+                        "User": user,
+                        "Film": (
+                            films[user.NominatedFilmID]
+                            if user.NominatedFilmID is not None
+                            else None
+                        ),
+                    }
+                )
+            else:
+                assert False
+
         return sorted(
-            nominations,
-            key=lambda n: [
-                -n.CastVotes - n.AttendanceVotes,
-                -n.CastVotes,
-                n.DateNominated,
-            ],
+            users,
+            key=lambda u: (
+                (0, Film.sortKey(u["Film"]))
+                if u["Film"] is not None
+                else (1, None)
+            ),
         )
 
     def get_watched_films(self):
@@ -437,7 +497,7 @@ class FilmBot:
                             "TableName": TABLE_NAME,
                             "Key": {
                                 USER_PK: {"S": self.guildID},
-                                USER_SK: {"S": f"USER#{DiscordUserID}"},
+                                USER_SK: {"S": f"DISCORDUSER#{DiscordUserID}"},
                             },
                             "ExpressionAttributeValues": {
                                 ":NewFilmID": {"S": NewFilmID},
@@ -514,7 +574,7 @@ class FilmBot:
                     "TableName": TABLE_NAME,
                     "Key": {
                         USER_PK: {"S": self.guildID},
-                        USER_SK: {"S": f"USER#{DiscordUserID}"},
+                        USER_SK: {"S": f"DISCORDUSER#{DiscordUserID}"},
                     },
                     "ExpressionAttributeValues": {
                         ":NewFilmID": {"S": FilmID},
@@ -667,7 +727,7 @@ class FilmBot:
                         "TableName": TABLE_NAME,
                         "Key": {
                             USER_PK: {"S": self.guildID},
-                            USER_SK: {"S": f"USER#{user_id}"},
+                            USER_SK: {"S": f"DISCORDUSER#{user_id}"},
                         },
                         "ExpressionAttributeValues": {
                             ":Null": {"NULL": True},
@@ -743,7 +803,7 @@ class FilmBot:
             TableName=TABLE_NAME,
             Key={
                 USER_PK: {"S": self.guildID},
-                USER_SK: {"S": f"USER#{DiscordUserID}"},
+                USER_SK: {"S": f"DISCORDUSER#{DiscordUserID}"},
             },
         )
         if "Item" not in response:
