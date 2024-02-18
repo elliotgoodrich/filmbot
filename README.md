@@ -16,7 +16,7 @@ called "PK" and a sort key called "SK".
 The partition key will be Discord Guild ID.
 
 The sort key will take one of the following forms:
-  1. `"USER#" + DiscordUserID`
+  1. `"DISCORDUSER#" + DiscordUserID`
   2. `"FILM#NOMINATED#" + FilmID`
   3. `"FILM#WATCHED#" + DateTimeStarted + "." + FilmID`
 
@@ -27,17 +27,19 @@ Where:
      film was started being watched
 
 For example:
-  1. `"USER#16393729388392"`
+  1. `"DISCORDUSER#16393729388392"`
   2. `"FILM#NOMINATED#76988c8a-a15d-48a9-8805-5c7f1723e298"`
   3. `"FILM#WATCHED#2022-01-19T21:35:58Z.76988c8a-a15d-48a9-8805-5c7f1723e298"`
 
-### "USER#*" Record Format
+### "DISCORDUSER#*" Record Format
 
-The records with sort key starting with `"USER#*"` contains the following
+The records with sort key starting with `"DISCORDUSER#*"` contains the following
 fields:
   * `NominatedFilmID` is a string matching a `"FILM#NOMINATED#*"` sort key that represents this users nominated film, or `NULL` if this user has no currently nominated film
   * `VoteID` is a string matching a `"FILM#NOMINATED#*"` sort key that represents this user's voted film, or `NULL` if this user has not voted yet in this round
   * `AttendanceVoteID` is a string matching a `"FILM#WATCHED#*.*"` sort key that represents this user's attendance vote for the last watched film, or `NULL` if this user did not watch the latest film
+
+***WARNING*** There cannot be any entries that appear alphabetically between `DISCORDUSER#` and `FILM#NOMINATED`.  This is because we would like to get all users and all nominated films in one go in order to display what the current voting situation is.
 
 ### "FILM#*" Record Format
 

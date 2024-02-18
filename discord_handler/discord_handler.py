@@ -1,6 +1,6 @@
 from filmbot import FilmBot, VotingStatus, AttendanceStatus, Film
 from UserError import UserError
-from datetime import datetime
+import datetime as dt
 from itertools import islice
 from uuid import uuid1
 from imdb import IMDb
@@ -76,6 +76,24 @@ def display_nomination(nomination):
     return f"{position}. <@{n.DiscordUserID}> {n.FilmName} ({vote_count} vote{s}){imdb}"
 
 
+def display_users_by_nomination(users):
+    position = users[0] + 1
+    userAndFilm = users[1]
+    discordUserID = userAndFilm["User"].DiscordUserID
+    if userAndFilm["Film"] is not None:
+        film = userAndFilm["Film"]
+        vote_count = film.CastVotes + film.AttendanceVotes
+        # Surround links with <> to avoid Discord previewing the links
+        film = (
+            f" [{film.FilmName}](<https://imdb.com/title/tt{film.IMDbID}>)"
+            if film.IMDbID is not None
+            else film.FilmName
+        )
+        return f"{position}. {film} ({vote_count} 🗳) <@{discordUserID}>"
+    else:
+        return f"{position}. [No nomination] <@{discordUserID}>"
+
+
 def display_user(user):
     return f"- <@{user.DiscordUserID}>"
 
@@ -144,7 +162,7 @@ def handle_application_command(event, client):
       * /here
       * /naughty
     """
-    now = datetime.datetime.now(datetime.UTC)
+    now = dt.datetime.now(dt.timezone.utc)
     body = event["body-json"]
     command = body["data"]["name"]
     guild_id = body["guild_id"]
@@ -215,8 +233,8 @@ def handle_application_command(event, client):
                     "The current list of nominations are:\n"
                     + "\n".join(
                         map(
-                            display_nomination,
-                            enumerate(filmbot.get_nominations()),
+                            display_users_by_nomination,
+                            enumerate(filmbot.get_users_by_nomination()),
                         )
                     )
                 ),
@@ -379,7 +397,7 @@ def handle_autocomplete(event, client):
 
 def handle_message_component(event, client):
     body = event["body-json"]
-    now = datetime.datetime.now(datetime.UTC)
+    now = dt.datetime.now(dt.timezone.utc)
     component_type = body["data"]["component_type"]
     if component_type != BUTTON:
         raise Exception(f"Unknown message component ({component_type})!")
