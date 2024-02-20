@@ -97,7 +97,7 @@ def display_users_by_nomination(users):
         vote_count = film.CastVotes + film.AttendanceVotes
         # Surround links with <> to avoid Discord previewing the links
         film = (
-            f" [{film.FilmName}](<https://imdb.com/title/tt{film.IMDbID}>)"
+            f"[{film.FilmName}](<https://imdb.com/title/tt{film.IMDbID}>)"
             if film.IMDbID is not None
             else film.FilmName
         )
