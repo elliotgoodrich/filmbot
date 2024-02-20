@@ -306,7 +306,7 @@ class TestDiscordHandler(unittest.TestCase):
                 "data": {
                     "content": "The current list of nominations are:\n"
                     + "1. My Film Name (0 🗳) <@abc>\n"
-                    + "2.  [My Other Film](<https://imdb.com/title/tt012345>) (0 🗳) <@def>",
+                    + "2. [My Other Film](<https://imdb.com/title/tt012345>) (0 🗳) <@def>",
                     "flags": DiscordFlag.EPHEMERAL_FLAG,
                 },
             },
@@ -461,7 +461,7 @@ class TestDiscordHandler(unittest.TestCase):
                 "data": {
                     "content": "The current list of nominations are:\n"
                     + "1. My Film Name (1 🗳) <@abc>\n"
-                    + "2.  [My Other Film](<https://imdb.com/title/tt012345>) (0 🗳) <@def>",
+                    + "2. [My Other Film](<https://imdb.com/title/tt012345>) (0 🗳) <@def>",
                     "flags": DiscordFlag.EPHEMERAL_FLAG,
                 },
             },
@@ -601,7 +601,7 @@ class TestDiscordHandler(unittest.TestCase):
                 "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
                 "data": {
                     "content": "The current list of nominations are:\n"
-                    + "1.  [My Other Film](<https://imdb.com/title/tt012345>) (1 🗳) <@def>\n"
+                    + "1. [My Other Film](<https://imdb.com/title/tt012345>) (1 🗳) <@def>\n"
                     + "2. [No nomination] <@abc>",
                     "flags": DiscordFlag.EPHEMERAL_FLAG,
                 },
@@ -751,7 +751,7 @@ class TestDiscordHandler(unittest.TestCase):
                 "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
                 "data": {
                     "content": "The current list of nominations are:\n"
-                    + "1.  [My Other Film](<https://imdb.com/title/tt012345>) (1 🗳) <@def>\n"
+                    + "1. [My Other Film](<https://imdb.com/title/tt012345>) (1 🗳) <@def>\n"
                     + "2. [No nomination] <@abc>",
                     "flags": DiscordFlag.EPHEMERAL_FLAG,
                 },
