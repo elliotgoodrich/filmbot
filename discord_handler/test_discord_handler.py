@@ -130,7 +130,7 @@ class TestDiscordHandler(unittest.TestCase):
             {
                 "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
                 "data": {
-                    "content": "The current list of nominations are:\n",
+                    "content": "There are no current nominations. Each user can nominate with the `/nominate` command.",
                     "flags": DiscordFlag.EPHEMERAL_FLAG,
                 },
             },
@@ -157,7 +157,7 @@ class TestDiscordHandler(unittest.TestCase):
             {
                 "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
                 "data": {
-                    "content": "Here are the films that have been watched:\n",
+                    "content": "No films have yet been watched.",
                     "flags": DiscordFlag.EPHEMERAL_FLAG,
                 },
             },
@@ -333,7 +333,7 @@ class TestDiscordHandler(unittest.TestCase):
             {
                 "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
                 "data": {
-                    "content": "Here are the films that have been watched:\n",
+                    "content": "No films have yet been watched.",
                     "flags": DiscordFlag.EPHEMERAL_FLAG,
                 },
             },
@@ -488,7 +488,7 @@ class TestDiscordHandler(unittest.TestCase):
             {
                 "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
                 "data": {
-                    "content": "Here are the films that have been watched:\n",
+                    "content": "No films have yet been watched.",
                     "flags": DiscordFlag.EPHEMERAL_FLAG,
                 },
             },
