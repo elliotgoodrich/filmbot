@@ -238,18 +238,24 @@ def handle_application_command(event, client):
             }
 
     elif command == "peek":
+        users = filmbot.get_users_by_nomination()
+        content = (
+            "There are no current nominations. Each user can nominate with the `/nominate` command."
+            if not users
+            else (
+                "The current list of nominations are:\n"
+                + "\n".join(
+                    map(
+                        display_users_by_nomination,
+                        enumerate(filmbot.get_users_by_nomination()),
+                    )
+                )
+            )
+        )
         return {
             "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
             "data": {
-                "content": (
-                    "The current list of nominations are:\n"
-                    + "\n".join(
-                        map(
-                            display_users_by_nomination,
-                            enumerate(filmbot.get_users_by_nomination()),
-                        )
-                    )
-                ),
+                "content": content,
                 "flags": DiscordFlag.EPHEMERAL_FLAG,
             },
         }
@@ -313,14 +319,18 @@ def handle_application_command(event, client):
             ]
         return result
     elif command == "history":
-        message = "Here are the films that have been watched:\n"
         films = filmbot.get_watched_films()
-        for film in films:
-            line = display_watched(film) + "\n"
-            if len(message) + len(line) > MAX_MESSAGE_SIZE:
-                break
+        if films:
+            message = "Here are the films that have been watched:\n"
 
-            message += line
+            for film in films:
+                line = display_watched(film) + "\n"
+                if len(message) + len(line) > MAX_MESSAGE_SIZE:
+                    break
+
+                message += line
+        else:
+            message = "No films have yet been watched."
 
         return {
             "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
