@@ -7,32 +7,44 @@ from imdb import IMDb
 
 MAX_MESSAGE_SIZE = 2000
 
-PING = 1
-APPLICATION_COMMAND = 2
-MESSAGE_COMPONENT = 3
-APPLICATION_COMMAND_AUTOCOMPLETE = 4
 
-PONG = 1
-CHANNEL_MESSAGE_WITH_SOURCE = 4
-DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE = 5
-DEFERRED_UPDATE_MESSAGE = 6
-UPDATE_MESSAGE = 7
-APPLICATION_COMMAND_AUTOCOMPLETE_RESULT = 8
+class DiscordRequest:
+    PING = 1
+    APPLICATION_COMMAND = 2
+    MESSAGE_COMPONENT = 3
+    APPLICATION_COMMAND_AUTOCOMPLETE = 4
 
-EPHEMERAL_FLAG = 64
 
-ACTION_ROW = 1
-BUTTON = 2
-SELECT_MENU = 3
+class DiscordResponse:
+    PONG = 1
+    CHANNEL_MESSAGE_WITH_SOURCE = 4
+    DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE = 5
+    DEFERRED_UPDATE_MESSAGE = 6
+    UPDATE_MESSAGE = 7
+    APPLICATION_COMMAND_AUTOCOMPLETE_RESULT = 8
 
-PRIMARY_STYLE = 1
-SECONDARY_STYLE = 2
-SUCCESS_STYLE = 3
-DANGER_STYLE = 4
-LINK_STYLE = 5
 
-MSG_COMPONENT_ATTENDANCE_ID = "register_attendance"
-MSG_COMPONENT_SHAME_ID = "shame"
+class DiscordFlag:
+    EPHEMERAL_FLAG = 64
+
+
+class DiscordMessageComponent:
+    ACTION_ROW = 1
+    BUTTON = 2
+    SELECT_MENU = 3
+
+
+class DiscordStyle:
+    PRIMARY = 1
+    SECONDARY = 2
+    SUCCESS = 3
+    DANGER = 4
+    LINK = 5
+
+
+class MessageComponentID:
+    ATTENDANCE = "register_attendance"
+    SHAME = "shame"
 
 
 def films_to_choices(films):
@@ -111,8 +123,8 @@ def display_watched(f: Film):
 def naughty_message(filmbot):
     users = filmbot.get_users().values()
     message = []
-    toNominate = set(filter(lambda u: u.NominatedFilmID is None, users))
-    toVote = set(filter(lambda u: u.VoteID is None, users))
+    toNominate = list(filter(lambda u: u.NominatedFilmID is None, users))
+    toVote = list(filter(lambda u: u.VoteID is None, users))
     if toNominate:
         message.append("These users need to nominate:")
         message += map(display_user, toNominate)
@@ -137,7 +149,7 @@ def register_attendance(*, FilmBot, DiscordUserID, DateTime):
         DiscordUserID=DiscordUserID, DateTime=DateTime
     )
     response = {
-        "type": CHANNEL_MESSAGE_WITH_SOURCE,
+        "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
         "data": {
             "content": (
                 f"<@{DiscordUserID}> has attended"
@@ -148,7 +160,7 @@ def register_attendance(*, FilmBot, DiscordUserID, DateTime):
     }
     # Don't allow users to flood the chat with `/here` commands
     if status == AttendanceStatus.ALREADY_REGISTERED:
-        response["data"]["flags"] = EPHEMERAL_FLAG
+        response["data"]["flags"] = DiscordFlag.EPHEMERAL_FLAG
     return response
 
 
@@ -181,7 +193,7 @@ def handle_application_command(event, client):
             DateTime=now,
         )
         return {
-            "type": CHANNEL_MESSAGE_WITH_SOURCE,
+            "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
             "data": {
                 "content": (
                     f"<@{user_id}> has successfully nominated {film_name}.\n\n"
@@ -203,7 +215,7 @@ def handle_application_command(event, client):
         film_name = filmbot.get_nominated_film(film_id).FilmName
         if status == VotingStatus.COMPLETE:
             return {
-                "type": CHANNEL_MESSAGE_WITH_SOURCE,
+                "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
                 "data": {
                     "content": (
                         f"<@{user_id}> has voted for {film_name}.\n\n"
@@ -219,7 +231,7 @@ def handle_application_command(event, client):
             }
         else:
             return {
-                "type": CHANNEL_MESSAGE_WITH_SOURCE,
+                "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
                 "data": {
                     "content": f"<@{user_id}> has voted for {film_name}",
                 },
@@ -227,7 +239,7 @@ def handle_application_command(event, client):
 
     elif command == "peek":
         return {
-            "type": CHANNEL_MESSAGE_WITH_SOURCE,
+            "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
             "data": {
                 "content": (
                     "The current list of nominations are:\n"
@@ -238,7 +250,7 @@ def handle_application_command(event, client):
                         )
                     )
                 ),
-                "flags": EPHEMERAL_FLAG,
+                "flags": DiscordFlag.EPHEMERAL_FLAG,
             },
         }
 
@@ -248,7 +260,7 @@ def handle_application_command(event, client):
             FilmID=film_id, DateTime=now, PresentUserIDs=[user_id]
         )
         return {
-            "type": CHANNEL_MESSAGE_WITH_SOURCE,
+            "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
             "data": {
                 "content": (
                     f"Started watching {film.FilmName}!\n\n"
@@ -257,13 +269,13 @@ def handle_application_command(event, client):
                 ),
                 "components": [
                     {
-                        "type": ACTION_ROW,
+                        "type": DiscordMessageComponent.ACTION_ROW,
                         "components": [
                             {
-                                "type": BUTTON,
+                                "type": DiscordMessageComponent.BUTTON,
                                 "label": "Register Attendance",
-                                "style": PRIMARY_STYLE,
-                                "custom_id": MSG_COMPONENT_ATTENDANCE_ID,
+                                "style": DiscordStyle.PRIMARY,
+                                "custom_id": MessageComponentID.ATTENDANCE,
                             }
                         ],
                     }
@@ -277,10 +289,10 @@ def handle_application_command(event, client):
     elif command == "naughty":
         naughty = naughty_message(filmbot)
         result = {
-            "type": CHANNEL_MESSAGE_WITH_SOURCE,
+            "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
             "data": {
                 "content": naughty["content"],
-                "flags": EPHEMERAL_FLAG,
+                "flags": DiscordFlag.EPHEMERAL_FLAG,
             },
         }
 
@@ -288,13 +300,13 @@ def handle_application_command(event, client):
         if naughty["any_tasks"]:
             result["data"]["components"] = [
                 {
-                    "type": ACTION_ROW,
+                    "type": DiscordMessageComponent.ACTION_ROW,
                     "components": [
                         {
-                            "type": BUTTON,
+                            "type": DiscordMessageComponent.BUTTON,
                             "label": "Publicly Shame",
-                            "style": DANGER_STYLE,
-                            "custom_id": MSG_COMPONENT_SHAME_ID,
+                            "style": DiscordStyle.DANGER,
+                            "custom_id": MessageComponentID.SHAME,
                         }
                     ],
                 }
@@ -311,10 +323,10 @@ def handle_application_command(event, client):
             message += line
 
         return {
-            "type": CHANNEL_MESSAGE_WITH_SOURCE,
+            "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
             "data": {
                 "content": message,
-                "flags": EPHEMERAL_FLAG,
+                "flags": DiscordFlag.EPHEMERAL_FLAG,
             },
         }
     else:
@@ -342,7 +354,7 @@ def handle_autocomplete(event, client):
         MAX_RESULTS = 5
         results = ia.search_movie(partial_film_name, results=MAX_RESULTS * 2)
         return {
-            "type": APPLICATION_COMMAND_AUTOCOMPLETE_RESULT,
+            "type": DiscordResponse.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT,
             "data": {
                 "choices": list(
                     map(
@@ -374,7 +386,7 @@ def handle_autocomplete(event, client):
             reverse=True,
         )
         return {
-            "type": APPLICATION_COMMAND_AUTOCOMPLETE_RESULT,
+            "type": DiscordResponse.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT,
             "data": {
                 "choices": films_to_choices(final_nominations),
             },
@@ -386,7 +398,7 @@ def handle_autocomplete(event, client):
         # as this is most likely the one we are going to watch
         nominations = filmbot.get_nominations()
         return {
-            "type": APPLICATION_COMMAND_AUTOCOMPLETE_RESULT,
+            "type": DiscordResponse.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT,
             "data": {
                 "choices": films_to_choices(nominations),
             },
@@ -399,20 +411,20 @@ def handle_message_component(event, client):
     body = event["body-json"]
     now = dt.datetime.now(dt.timezone.utc)
     component_type = body["data"]["component_type"]
-    if component_type != BUTTON:
+    if component_type != DiscordMessageComponent.BUTTON:
         raise Exception(f"Unknown message component ({component_type})!")
 
     custom_id = body["data"]["custom_id"]
-    if custom_id == MSG_COMPONENT_ATTENDANCE_ID:
+    if custom_id == MessageComponentID.ATTENDANCE:
         filmbot = FilmBot(DynamoDBClient=client, GuildID=body["guild_id"])
         user_id = body["member"]["user"]["id"]
         return register_attendance(
             FilmBot=filmbot, DiscordUserID=user_id, DateTime=now
         )
-    elif custom_id == MSG_COMPONENT_SHAME_ID:
+    elif custom_id == MessageComponentID.SHAME:
         filmbot = FilmBot(DynamoDBClient=client, GuildID=body["guild_id"])
         return {
-            "type": CHANNEL_MESSAGE_WITH_SOURCE,
+            "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
             "data": {"content": naughty_message(filmbot)["content"]},
         }
     else:
@@ -424,33 +436,33 @@ def handle_message_component(event, client):
 def handle_discord(event, client):
     body = event["body-json"]
     type = body["type"]
-    if type == PING:
-        return {"type": PONG}
-    elif type == APPLICATION_COMMAND:
+    if type == DiscordRequest.PING:
+        return {"type": DiscordResponse.PONG}
+    elif type == DiscordRequest.APPLICATION_COMMAND:
         try:
             return handle_application_command(event, client)
         except UserError as e:
             # If we get a `UserError` it's something we can display to the user
             return {
-                "type": CHANNEL_MESSAGE_WITH_SOURCE,
+                "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
                 "data": {
                     "content": str(e),
-                    "flags": EPHEMERAL_FLAG,
+                    "flags": DiscordFlag.EPHEMERAL_FLAG,
                 },
             }
-    elif type == MESSAGE_COMPONENT:
+    elif type == DiscordRequest.MESSAGE_COMPONENT:
         try:
             return handle_message_component(event, client)
         except UserError as e:
             # If we get a `UserError` it's something we can display to the user
             return {
-                "type": CHANNEL_MESSAGE_WITH_SOURCE,
+                "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
                 "data": {
                     "content": str(e),
-                    "flags": EPHEMERAL_FLAG,
+                    "flags": DiscordFlag.EPHEMERAL_FLAG,
                 },
             }
-    elif type == APPLICATION_COMMAND_AUTOCOMPLETE:
+    elif type == DiscordRequest.APPLICATION_COMMAND_AUTOCOMPLETE:
         return handle_autocomplete(event, client)
     else:
         raise Exception(f"Unknown type ({type})!")

@@ -28,7 +28,6 @@ def grab_db(client):
         "ReturnConsumedCapacity": "NONE",
     }
 
-    members_table = client.scan(**kwargs)
     done = False
     start_key = None
     records = {}
@@ -571,23 +570,20 @@ class TestFilmBot(unittest.TestCase):
                     DateWatched=None,
                 ),
             },
-            # Users with no films nominated will be returned in reverse order by their discord ID
-            # since internally we use ScanIndexForward=False.  The order of these is not important
-            # but I am adding this comment here for documentation
             {
                 "User": User(
-                    DiscordUserID="UserG",
+                    DiscordUserID="UserF",
                     NominatedFilmID=None,
-                    VoteID=None,
+                    VoteID="film4",
                     AttendanceVoteID=None,
                 ),
                 "Film": None,
             },
             {
                 "User": User(
-                    DiscordUserID="UserF",
+                    DiscordUserID="UserG",
                     NominatedFilmID=None,
-                    VoteID="film4",
+                    VoteID=None,
                     AttendanceVoteID=None,
                 ),
                 "Film": None,

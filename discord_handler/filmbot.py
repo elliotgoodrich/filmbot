@@ -176,12 +176,12 @@ class Film:
         #   - the highest number of votes
         #   - if that is the same, then tie break by highest cast votes
         #   - if that is the same, then tie break by earliest nominated
+        #   - if by some miracle the nominations have the same timestamp, use the user's discord ID
         return (
-            [
-                -film.CastVotes - film.AttendanceVotes,
-                -film.CastVotes,
-                film.DateNominated,
-            ],
+            -film.CastVotes - film.AttendanceVotes,
+            -film.CastVotes,
+            film.DateNominated,
+            film.DiscordUserID,
         )
 
 
@@ -408,7 +408,7 @@ class FilmBot:
             key=lambda u: (
                 (0, Film.sortKey(u["Film"]))
                 if u["Film"] is not None
-                else (1, None)
+                else (1, u["User"].DiscordUserID)
             ),
         )
 
