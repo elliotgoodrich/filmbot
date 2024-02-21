@@ -9,7 +9,6 @@
 #   - /peek
 #   - /watch
 #   - /here
-#   - /naughty
 # so that they are visible and accessible within Discord.
 #
 # Usage
@@ -58,7 +57,7 @@ commands = [
     {
         "name": "peek",
         "type": 1,
-        "description": "Display the current set of nominations",
+        "description": "Display the current set of nominations and current voting status",
     },
     {
         "name": "watch",
