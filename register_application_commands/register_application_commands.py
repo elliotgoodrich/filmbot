@@ -19,11 +19,12 @@
 
 import requests
 import json
+import time
 
 f = open("../config.json")
 
 config = json.load(f)
-url = f'https://discord.com/api/v8/applications/{config["application_id"]["value"]}/commands'
+url = f'https://discord.com/api/v10/applications/{config["application_id"]["value"]}/commands'
 
 commands = [
     {
@@ -95,3 +96,4 @@ headers = {"Authorization": f'Bot {config["bot_token"]["value"]}'}
 for command in commands:
     r = requests.post(url, headers=headers, json=command)
     print(r.json())
+    time.sleep(1)
