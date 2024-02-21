@@ -106,10 +106,6 @@ def display_users_by_nomination(users):
         return f"{position}. [No nomination] <@{discordUserID}>"
 
 
-def display_user(user):
-    return f"- <@{user.DiscordUserID}>"
-
-
 def display_watched(f: Film):
     # Surround links with <> to avoid Discord previewing the links
     imdb = (
@@ -118,30 +114,6 @@ def display_watched(f: Film):
         else ""
     )
     return f"- <t:{int(f.DateWatched.timestamp())}:d> {f.FilmName}{imdb} - <@{f.DiscordUserID}>"
-
-
-def naughty_message(filmbot):
-    users = filmbot.get_users().values()
-    message = []
-    toNominate = list(filter(lambda u: u.NominatedFilmID is None, users))
-    toVote = list(filter(lambda u: u.VoteID is None, users))
-    if toNominate:
-        message.append("These users need to nominate:")
-        message += map(display_user, toNominate)
-        if toVote:
-            # Add a separating newline
-            message.append("")
-
-    if toVote:
-        message.append("These users need to vote:")
-        message += map(display_user, toVote)
-    elif not toNominate:
-        message = ["There are no outstanding tasks."]
-
-    return {
-        "content": "\n".join(message),
-        "any_tasks": toNominate or toVote,
-    }
 
 
 def register_attendance(*, FilmBot, DiscordUserID, DateTime):
@@ -172,7 +144,6 @@ def handle_application_command(event, client):
       * /peek
       * /watch [FilmID]
       * /here
-      * /naughty
     """
     now = dt.datetime.now(dt.timezone.utc)
     body = event["body-json"]
@@ -239,26 +210,58 @@ def handle_application_command(event, client):
 
     elif command == "peek":
         users = filmbot.get_users_by_nomination()
-        content = (
-            "There are no current nominations. Each user can nominate with the `/nominate` command."
-            if not users
-            else (
-                "The current list of nominations are:\n"
-                + "\n".join(
-                    map(
-                        display_users_by_nomination,
-                        enumerate(filmbot.get_users_by_nomination()),
-                    )
+        content = ""
+        components = None
+        if not users:
+            content += "There are no current nominations. Each user can nominate with the `/nominate` command."
+        else:
+            content += "The current list of nominations are:\n" + "\n".join(
+                map(
+                    display_users_by_nomination,
+                    enumerate(users),
                 )
             )
-        )
-        return {
+
+            toNominate = list(
+                filter(lambda u: u["User"].NominatedFilmID is None, users)
+            )
+            toVote = list(filter(lambda u: u["User"].VoteID is None, users))
+
+            if toVote:
+                content += "\n\nand these users need to vote:\n"
+
+                def print_user(u):
+                    return "- <@" + u["User"].DiscordUserID + ">"
+
+                content += "\n".join(map(print_user, toVote))
+            else:
+                content += "All users have voted."
+
+            if toNominate or toVote:
+                components = [
+                    {
+                        "type": DiscordMessageComponent.ACTION_ROW,
+                        "components": [
+                            {
+                                "type": DiscordMessageComponent.BUTTON,
+                                "label": "Publicly Shame",
+                                "style": DiscordStyle.DANGER,
+                                "custom_id": MessageComponentID.SHAME,
+                            }
+                        ],
+                    }
+                ]
+
+        result = {
             "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
             "data": {
                 "content": content,
                 "flags": DiscordFlag.EPHEMERAL_FLAG,
             },
         }
+        if components:
+            result["data"]["components"] = components
+        return result
 
     elif command == "watch":
         film_id = body["data"]["options"][0]["value"]
@@ -292,32 +295,6 @@ def handle_application_command(event, client):
         return register_attendance(
             FilmBot=filmbot, DiscordUserID=user_id, DateTime=now
         )
-    elif command == "naughty":
-        naughty = naughty_message(filmbot)
-        result = {
-            "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
-            "data": {
-                "content": naughty["content"],
-                "flags": DiscordFlag.EPHEMERAL_FLAG,
-            },
-        }
-
-        # Display a "shame" button only if there are tasks
-        if naughty["any_tasks"]:
-            result["data"]["components"] = [
-                {
-                    "type": DiscordMessageComponent.ACTION_ROW,
-                    "components": [
-                        {
-                            "type": DiscordMessageComponent.BUTTON,
-                            "label": "Publicly Shame",
-                            "style": DiscordStyle.DANGER,
-                            "custom_id": MessageComponentID.SHAME,
-                        }
-                    ],
-                }
-            ]
-        return result
     elif command == "history":
         films = filmbot.get_watched_films()
         if films:
@@ -433,9 +410,30 @@ def handle_message_component(event, client):
         )
     elif custom_id == MessageComponentID.SHAME:
         filmbot = FilmBot(DynamoDBClient=client, GuildID=body["guild_id"])
+        users = filmbot.get_users().values()
+        message = []
+        toNominate = list(filter(lambda u: u.NominatedFilmID is None, users))
+        toVote = list(filter(lambda u: u.VoteID is None, users))
+
+        def display_user(user):
+            return f"- <@{user.DiscordUserID}>"
+
+        if toNominate:
+            message.append("These users need to nominate:")
+            message += map(display_user, toNominate)
+            if toVote:
+                # Add a separating newline
+                message.append("")
+
+        if toVote:
+            message.append("These users need to vote:")
+            message += map(display_user, toVote)
+        elif not toNominate:
+            message = ["There are no outstanding tasks."]
+
         return {
             "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
-            "data": {"content": naughty_message(filmbot)["content"]},
+            "data": {"content": "\n".join(message)},
         }
     else:
         raise Exception(

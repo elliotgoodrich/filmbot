@@ -14,6 +14,18 @@ from filmbot import TABLE_NAME, key_map
 
 AWS_REGION = "eu-west-2"
 
+SHAME_COMPONENT = {
+    "type": DiscordMessageComponent.ACTION_ROW,
+    "components": [
+        {
+            "type": DiscordMessageComponent.BUTTON,
+            "label": "Publicly Shame",
+            "style": DiscordStyle.DANGER,
+            "custom_id": MessageComponentID.SHAME,
+        }
+    ],
+}
+
 
 def set_db(client, data):
     try:
@@ -100,14 +112,14 @@ class TestDiscordHandler(unittest.TestCase):
         )
 
     def test_workflow(self):
-        # 1. Check /peek, /history, /naughty with an empty DB
+        # 1. Check /peek and /history with an empty DB
         # 2. Check /nominate
         # 3. Check /vote
         # 4. Check /watch
         # 5. Check shame button
         # 6. Check /here (TODO: Also check the application command)
 
-        # 1. Check /peek, /history, /naughty with an empty DB
+        # 1. Check /peek and /history with an empty DB
         # /peek
         self.assertEqual(
             handle_discord(
@@ -158,33 +170,6 @@ class TestDiscordHandler(unittest.TestCase):
                 "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
                 "data": {
                     "content": "No films have yet been watched.",
-                    "flags": DiscordFlag.EPHEMERAL_FLAG,
-                },
-            },
-        )
-        # /naughty
-        self.assertEqual(
-            handle_discord(
-                {
-                    "body-json": {
-                        "type": DiscordRequest.APPLICATION_COMMAND,
-                        "data": {
-                            "name": "naughty",
-                        },
-                        "guild_id": "123",
-                        "member": {
-                            "user": {
-                                "id": "abc",
-                            },
-                        },
-                    }
-                },
-                self.dynamodb_client,
-            ),
-            {
-                "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
-                "data": {
-                    "content": "There are no outstanding tasks.",
                     "flags": DiscordFlag.EPHEMERAL_FLAG,
                 },
             },
@@ -306,7 +291,11 @@ class TestDiscordHandler(unittest.TestCase):
                 "data": {
                     "content": "The current list of nominations are:\n"
                     + "1. My Film Name (0 🗳) <@abc>\n"
-                    + "2. [My Other Film](<https://imdb.com/title/tt012345>) (0 🗳) <@def>",
+                    + "2. [My Other Film](<https://imdb.com/title/tt012345>) (0 🗳) <@def>\n\n"
+                    + "and these users need to vote:\n"
+                    + "- <@abc>\n"
+                    + "- <@def>",
+                    "components": [SHAME_COMPONENT],
                     "flags": DiscordFlag.EPHEMERAL_FLAG,
                 },
             },
@@ -335,46 +324,6 @@ class TestDiscordHandler(unittest.TestCase):
                 "data": {
                     "content": "No films have yet been watched.",
                     "flags": DiscordFlag.EPHEMERAL_FLAG,
-                },
-            },
-        )
-        # /naughty
-        self.assertEqual(
-            handle_discord(
-                {
-                    "body-json": {
-                        "type": DiscordRequest.APPLICATION_COMMAND,
-                        "data": {
-                            "name": "naughty",
-                        },
-                        "guild_id": "123",
-                        "member": {
-                            "user": {
-                                "id": "abc",
-                            },
-                        },
-                    }
-                },
-                self.dynamodb_client,
-            ),
-            {
-                "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
-                "data": {
-                    "content": "These users need to vote:\n- <@abc>\n- <@def>",
-                    "flags": DiscordFlag.EPHEMERAL_FLAG,
-                    "components": [
-                        {
-                            "type": DiscordMessageComponent.ACTION_ROW,
-                            "components": [
-                                {
-                                    "type": DiscordMessageComponent.BUTTON,
-                                    "label": "Publicly Shame",
-                                    "style": DiscordStyle.DANGER,
-                                    "custom_id": MessageComponentID.SHAME,
-                                }
-                            ],
-                        }
-                    ],
                 },
             },
         )
@@ -461,7 +410,10 @@ class TestDiscordHandler(unittest.TestCase):
                 "data": {
                     "content": "The current list of nominations are:\n"
                     + "1. My Film Name (1 🗳) <@abc>\n"
-                    + "2. [My Other Film](<https://imdb.com/title/tt012345>) (0 🗳) <@def>",
+                    + "2. [My Other Film](<https://imdb.com/title/tt012345>) (0 🗳) <@def>\n\n"
+                    + "and these users need to vote:\n"
+                    + "- <@abc>",
+                    "components": [SHAME_COMPONENT],
                     "flags": DiscordFlag.EPHEMERAL_FLAG,
                 },
             },
@@ -490,46 +442,6 @@ class TestDiscordHandler(unittest.TestCase):
                 "data": {
                     "content": "No films have yet been watched.",
                     "flags": DiscordFlag.EPHEMERAL_FLAG,
-                },
-            },
-        )
-        # /naughty
-        self.assertEqual(
-            handle_discord(
-                {
-                    "body-json": {
-                        "type": DiscordRequest.APPLICATION_COMMAND,
-                        "data": {
-                            "name": "naughty",
-                        },
-                        "guild_id": "123",
-                        "member": {
-                            "user": {
-                                "id": "abc",
-                            },
-                        },
-                    }
-                },
-                self.dynamodb_client,
-            ),
-            {
-                "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
-                "data": {
-                    "content": "These users need to vote:\n- <@abc>",
-                    "flags": DiscordFlag.EPHEMERAL_FLAG,
-                    "components": [
-                        {
-                            "type": DiscordMessageComponent.ACTION_ROW,
-                            "components": [
-                                {
-                                    "type": DiscordMessageComponent.BUTTON,
-                                    "label": "Publicly Shame",
-                                    "style": DiscordStyle.DANGER,
-                                    "custom_id": MessageComponentID.SHAME,
-                                }
-                            ],
-                        }
-                    ],
                 },
             },
         )
@@ -602,7 +514,11 @@ class TestDiscordHandler(unittest.TestCase):
                 "data": {
                     "content": "The current list of nominations are:\n"
                     + "1. [My Other Film](<https://imdb.com/title/tt012345>) (1 🗳) <@def>\n"
-                    + "2. [No nomination] <@abc>",
+                    + "2. [No nomination] <@abc>\n\n"
+                    + "and these users need to vote:\n"
+                    + "- <@def>\n"
+                    + "- <@abc>",
+                    "components": [SHAME_COMPONENT],
                     "flags": DiscordFlag.EPHEMERAL_FLAG,
                 },
             },
@@ -637,47 +553,6 @@ class TestDiscordHandler(unittest.TestCase):
         )
         self.assertRegex(actual["data"]["content"], "My Film Name")
         self.assertRegex(actual["data"]["content"], "<@abc>")
-        # /naughty
-        self.assertEqual(
-            handle_discord(
-                {
-                    "body-json": {
-                        "type": DiscordRequest.APPLICATION_COMMAND,
-                        "data": {
-                            "name": "naughty",
-                        },
-                        "guild_id": "123",
-                        "member": {
-                            "user": {
-                                "id": "abc",
-                            },
-                        },
-                    }
-                },
-                self.dynamodb_client,
-            ),
-            {
-                "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
-                "data": {
-                    "content": "These users need to nominate:\n- <@abc>\n\n"
-                    + "These users need to vote:\n- <@abc>\n- <@def>",
-                    "flags": DiscordFlag.EPHEMERAL_FLAG,
-                    "components": [
-                        {
-                            "type": DiscordMessageComponent.ACTION_ROW,
-                            "components": [
-                                {
-                                    "type": DiscordMessageComponent.BUTTON,
-                                    "label": "Publicly Shame",
-                                    "style": DiscordStyle.DANGER,
-                                    "custom_id": MessageComponentID.SHAME,
-                                }
-                            ],
-                        }
-                    ],
-                },
-            },
-        )
 
         # 5. Check shame button
         self.assertEqual(
@@ -752,7 +627,11 @@ class TestDiscordHandler(unittest.TestCase):
                 "data": {
                     "content": "The current list of nominations are:\n"
                     + "1. [My Other Film](<https://imdb.com/title/tt012345>) (1 🗳) <@def>\n"
-                    + "2. [No nomination] <@abc>",
+                    + "2. [No nomination] <@abc>\n\n"
+                    + "and these users need to vote:\n"
+                    + "- <@def>\n"
+                    + "- <@abc>",
+                    "components": [SHAME_COMPONENT],
                     "flags": DiscordFlag.EPHEMERAL_FLAG,
                 },
             },
