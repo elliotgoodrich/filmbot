@@ -7,6 +7,14 @@ from imdb import IMDb
 
 MAX_MESSAGE_SIZE = 2000
 
+# To avoid querying for more data than we can show in a single message for `/history`,
+# we limit the query size.  This gives us 2000/80 = 25 bytes per row to show and it's
+# unlikely that we have 80 films with small enough titles to fit in 2KB.  In those
+# rare occassions it doesn't really matter as we display a button to display the
+# next set.  Realistically this should be small enough to fill 2KB but less a multiple
+# of the DynamoDB block size (4KB) in order to minimize cost.
+HISTORY_LIMIT = 80
+
 
 class DiscordRequest:
     PING = 1
@@ -45,6 +53,7 @@ class DiscordStyle:
 class MessageComponentID:
     ATTENDANCE = "register_attendance"
     SHAME = "shame"
+    MORE_HISTORY = "more_history#"
 
 
 def films_to_choices(films):
@@ -107,13 +116,50 @@ def display_users_by_nomination(users):
 
 
 def display_watched(f: Film):
-    # Surround links with <> to avoid Discord previewing the links
-    imdb = (
-        f" [IMDB](<https://imdb.com/title/tt{f.IMDbID}>)"
-        if f.IMDbID is not None
-        else ""
+    return f"- <t:{int(f.DateWatched.timestamp())}:d> {f.FilmName} - <@{f.DiscordUserID}>"
+
+
+def get_history(filmbot: FilmBot, nextKey=None, MessagePrefix=""):
+    (films, nextKey) = filmbot.get_watched_films_after(
+        Limit=HISTORY_LIMIT, ExclusiveStartKey=nextKey
     )
-    return f"- <t:{int(f.DateWatched.timestamp())}:d> {f.FilmName}{imdb} - <@{f.DiscordUserID}>"
+    if films:
+        message = MessagePrefix
+
+        lastFilmKey = None
+        for film in films:
+            line = display_watched(film) + "\n"
+            if len(message) + len(line) > MAX_MESSAGE_SIZE:
+                nextKey = lastFilmKey
+                break
+
+            lastFilmKey = film.SK
+            message += line
+    else:
+        message = "No films have yet been watched."
+
+    result = {
+        "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
+        "data": {
+            "content": message,
+            "flags": DiscordFlag.EPHEMERAL_FLAG,
+        },
+    }
+    if nextKey:
+        result["data"]["components"] = [
+            {
+                "type": DiscordMessageComponent.ACTION_ROW,
+                "components": [
+                    {
+                        "type": DiscordMessageComponent.BUTTON,
+                        "label": "More History",
+                        "style": DiscordStyle.PRIMARY,
+                        "custom_id": MessageComponentID.MORE_HISTORY + nextKey,
+                    }
+                ],
+            }
+        ]
+    return result
 
 
 def register_attendance(*, FilmBot, DiscordUserID, DateTime):
@@ -296,26 +342,10 @@ def handle_application_command(event, client):
             FilmBot=filmbot, DiscordUserID=user_id, DateTime=now
         )
     elif command == "history":
-        films = filmbot.get_watched_films()
-        if films:
-            message = "Here are the films that have been watched:\n"
-
-            for film in films:
-                line = display_watched(film) + "\n"
-                if len(message) + len(line) > MAX_MESSAGE_SIZE:
-                    break
-
-                message += line
-        else:
-            message = "No films have yet been watched."
-
-        return {
-            "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
-            "data": {
-                "content": message,
-                "flags": DiscordFlag.EPHEMERAL_FLAG,
-            },
-        }
+        return get_history(
+            filmbot,
+            MessagePrefix="Here are the films that have been watched:\n",
+        )
     else:
         raise Exception(f"Unknown application command (/{command})")
 
@@ -435,6 +465,12 @@ def handle_message_component(event, client):
             "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
             "data": {"content": "\n".join(message)},
         }
+    elif custom_id.startswith(MessageComponentID.MORE_HISTORY):
+        filmbot = FilmBot(DynamoDBClient=client, GuildID=body["guild_id"])
+        return get_history(
+            filmbot,
+            nextKey=custom_id.removeprefix(MessageComponentID.MORE_HISTORY),
+        )
     else:
         raise Exception(
             f"Unknown 'custom_id' for button component ({custom_id})!"
