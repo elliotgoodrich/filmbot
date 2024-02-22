@@ -436,6 +436,41 @@ class FilmBot:
             )
         )
 
+    def get_watched_films_after(self, Limit, ExclusiveStartKey=None):
+        """
+        Return an tuple where the first element is an array of maximum `Limit` items of
+        watched films ordered by most recently watched, and the second element is a
+        string representing the `ExclusiveStartKey` parameter to pass into the next
+        call to get the next batch of filmes.  If there are no more films then the
+        second parameter is `None`.
+        """
+        query = {
+            "TableName": TABLE_NAME,
+            "ExpressionAttributeValues": {
+                ":GuildID": {"S": self.guildID},
+                ":FilmPrefix": {"S": "FILM#WATCHED#"},
+            },
+            "KeyConditionExpression": (
+                f"{FILM_PK} = :GuildID AND "
+                f"begins_with({FILM_SK}, :FilmPrefix)"
+            ),
+            "ScanIndexForward": False,
+            "Limit": Limit,
+        }
+        if ExclusiveStartKey:
+            query["ExclusiveStartKey"] = {
+                "PK": {"S": self.guildID},
+                "SK": {"S": ExclusiveStartKey},
+            }
+
+        response = self.client.query(**query)
+
+        # Simplify the `LastEvaluateKey` to just the sort key value
+        LastEvaluateKey = response.get("LastEvaluatedKey", None)
+        if LastEvaluateKey:
+            LastEvaluateKey = LastEvaluateKey[FILM_SK]["S"]
+        return (list(map(Film.fromDict, response["Items"])), LastEvaluateKey)
+
     def get_all_films(self):
         """
         Return an array watched and unwatched films in the order that they were

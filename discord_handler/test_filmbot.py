@@ -612,7 +612,6 @@ class TestFilmBot(unittest.TestCase):
 
         # Check that it works a few films
         d = datetime(2001, 1, 1, 5, 0, 0, 123)
-        e = d + timedelta(seconds=1)
         input_films = [
             {
                 "SK": f"FILM#WATCHED#{d.isoformat()}#film1",
@@ -678,6 +677,23 @@ class TestFilmBot(unittest.TestCase):
             set_db(self.dynamodb_client, {guild: input})
 
             self.assertEqual(filmbot.get_watched_films(), expected)
+            nextKey = "FILM#WATCHED#2001-01-01T05:00:00.000123#film1"
+            self.assertEqual(
+                filmbot.get_watched_films_after(Limit=1),
+                ([expected[0]], nextKey),
+            )
+            self.assertEqual(
+                filmbot.get_watched_films_after(Limit=2), (expected, None)
+            )
+            self.assertEqual(
+                filmbot.get_watched_films_after(Limit=100), (expected, None)
+            )
+            self.assertEqual(
+                filmbot.get_watched_films_after(
+                    Limit=1, ExclusiveStartKey=nextKey
+                ),
+                ([expected[1]], None),
+            )
             count += 1
 
         assert count == factorial(len(input_films))
