@@ -191,7 +191,7 @@ def handle_application_command(event, client):
       * /watch [FilmID]
       * /here
     """
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now()
     body = event["body-json"]
     command = body["data"]["name"]
     guild_id = body["guild_id"]
@@ -426,7 +426,7 @@ def handle_autocomplete(event, client):
 
 def handle_message_component(event, client):
     body = event["body-json"]
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now()
     component_type = body["data"]["component_type"]
     if component_type != DiscordMessageComponent.BUTTON:
         raise Exception(f"Unknown message component ({component_type})!")
