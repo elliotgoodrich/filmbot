@@ -115,11 +115,12 @@ def display_users_by_nomination(users):
         return f"{position}. [No nomination] <@{discordUserID}>"
 
 
-def display_watched(f: Film):
-    return f"- <t:{int(f.DateWatched.timestamp())}:d> {f.FilmName} - <@{f.DiscordUserID}>"
+def display_watched(f: Film, user):
+    film = f"**{f.FilmName}**" if user in f.UsersAttended else f.FilmName
+    return f"- <t:{int(f.DateWatched.timestamp())}:d> {film} - <@{f.DiscordUserID}>"
 
 
-def get_history(filmbot: FilmBot, nextKey=None, MessagePrefix=""):
+def get_history(filmbot: FilmBot, user, nextKey=None, MessagePrefix=""):
     (films, nextKey) = filmbot.get_watched_films_after(
         Limit=HISTORY_LIMIT, ExclusiveStartKey=nextKey
     )
@@ -128,7 +129,7 @@ def get_history(filmbot: FilmBot, nextKey=None, MessagePrefix=""):
 
         lastFilmKey = None
         for film in films:
-            line = display_watched(film) + "\n"
+            line = display_watched(film, user) + "\n"
             if len(message) + len(line) > MAX_MESSAGE_SIZE:
                 nextKey = lastFilmKey
                 break
@@ -344,6 +345,7 @@ def handle_application_command(event, client):
     elif command == "history":
         return get_history(
             filmbot,
+            user_id,
             MessagePrefix="Here are the films that have been watched:\n",
         )
     else:
@@ -469,6 +471,7 @@ def handle_message_component(event, client):
         filmbot = FilmBot(DynamoDBClient=client, GuildID=body["guild_id"])
         return get_history(
             filmbot,
+            body["member"]["user"]["id"],
             nextKey=custom_id.removeprefix(MessageComponentID.MORE_HISTORY),
         )
     else:
