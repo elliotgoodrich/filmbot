@@ -1366,6 +1366,214 @@ class TestFilmBot(unittest.TestCase):
         expected[guild1][FILM_1]["UsersAttended"].add(user_id3)
         self.assertEqual(grab_db(self.dynamodb_client), expected)
 
+    def test_retire_user(self):
+        guild = "TEST-GUILD"
+        filmbot = FilmBot(DynamoDBClient=self.dynamodb_client, GuildID=guild)
+
+        user_id1 = "user1"
+        user_id2 = "user2"
+        user_id3 = "user3"
+        film_id1 = "film-id-1"
+        film_id2 = "film-id-2"
+        film_id3 = "film-id-3"
+
+        d = datetime(2024, 1, 1, 12, 0, 0)
+
+        # Cannot retire or check a user who doesn't exist
+        with self.assertRaises(UserError):
+            filmbot.retire_user(DiscordUserID=user_id1)
+        with self.assertRaises(UserError):
+            filmbot.can_retire(DiscordUserID=user_id1)
+
+        base_data = {
+            guild: [
+                {
+                    "SK": f"DISCORDUSER#{user_id1}",
+                    "NominatedFilmID": film_id1,
+                    "VoteID": None,
+                    "AttendanceVoteID": None,
+                },
+                {
+                    "SK": f"DISCORDUSER#{user_id2}",
+                    "NominatedFilmID": film_id2,
+                    "VoteID": film_id1,  # user2 has voted for user1's film
+                    "AttendanceVoteID": None,
+                },
+                {
+                    "SK": f"DISCORDUSER#{user_id3}",
+                    "NominatedFilmID": None,
+                    "VoteID": film_id1,  # user3 has voted but has no nomination
+                    "AttendanceVoteID": None,
+                },
+                {
+                    "SK": f"FILM#NOMINATED#{film_id1}",
+                    "FilmName": "Film 1",
+                    "IMDbID": None,
+                    "DiscordUserID": user_id1,
+                    "CastVotes": 0,
+                    "AttendanceVotes": 0,
+                    "UsersAttended": None,
+                    "DateNominated": d.isoformat(),
+                },
+                {
+                    "SK": f"FILM#NOMINATED#{film_id2}",
+                    "FilmName": "Film 2",
+                    "IMDbID": None,
+                    "DiscordUserID": user_id2,
+                    "CastVotes": 0,
+                    "AttendanceVotes": 0,
+                    "UsersAttended": None,
+                    "DateNominated": d.isoformat(),
+                },
+                {
+                    "SK": f"FILM#WATCHED#{(d - timedelta(days=5)).isoformat()}#{film_id3}",
+                    "FilmName": "Watched Film",
+                    "IMDbID": None,
+                    "DiscordUserID": user_id2,
+                    "CastVotes": 0,
+                    "AttendanceVotes": 0,
+                    "UsersAttended": {user_id1},
+                    "DateNominated": (d - timedelta(days=6)).isoformat(),
+                },
+            ]
+        }
+        set_db(self.dynamodb_client, base_data)
+
+        # Cannot retire user1: they attended a recent film and others voted for their film
+        self.assertIsNotNone(filmbot.can_retire(DiscordUserID=user_id1))
+        with self.assertRaises(UserError):
+            filmbot.retire_user(DiscordUserID=user_id1)
+
+        # Cannot retire user2: they have an outstanding vote
+        self.assertIsNotNone(filmbot.can_retire(DiscordUserID=user_id2))
+        with self.assertRaises(UserError):
+            filmbot.retire_user(DiscordUserID=user_id2)
+
+        # Cannot retire user3: they have an outstanding vote
+        self.assertIsNotNone(filmbot.can_retire(DiscordUserID=user_id3))
+        with self.assertRaises(UserError):
+            filmbot.retire_user(DiscordUserID=user_id3)
+
+        # Set up an eligible scenario: user3 has no nomination, no vote, no recent attendance
+        eligible_data = {
+            guild: [
+                {
+                    "SK": f"DISCORDUSER#{user_id1}",
+                    "NominatedFilmID": film_id1,
+                    "VoteID": None,
+                    "AttendanceVoteID": None,
+                },
+                {
+                    "SK": f"DISCORDUSER#{user_id2}",
+                    "NominatedFilmID": film_id2,
+                    "VoteID": None,
+                    "AttendanceVoteID": None,
+                },
+                {
+                    "SK": f"DISCORDUSER#{user_id3}",
+                    "NominatedFilmID": None,
+                    "VoteID": None,
+                    "AttendanceVoteID": None,
+                },
+                {
+                    "SK": f"FILM#NOMINATED#{film_id1}",
+                    "FilmName": "Film 1",
+                    "IMDbID": None,
+                    "DiscordUserID": user_id1,
+                    "CastVotes": 0,
+                    "AttendanceVotes": 0,
+                    "UsersAttended": None,
+                    "DateNominated": d.isoformat(),
+                },
+                {
+                    "SK": f"FILM#NOMINATED#{film_id2}",
+                    "FilmName": "Film 2",
+                    "IMDbID": None,
+                    "DiscordUserID": user_id2,
+                    "CastVotes": 0,
+                    "AttendanceVotes": 0,
+                    "UsersAttended": None,
+                    "DateNominated": d.isoformat(),
+                },
+                {
+                    "SK": f"FILM#WATCHED#{(d - timedelta(days=5)).isoformat()}#{film_id3}",
+                    "FilmName": "Watched Film",
+                    "IMDbID": None,
+                    "DiscordUserID": user_id2,
+                    "CastVotes": 0,
+                    "AttendanceVotes": 0,
+                    "UsersAttended": {user_id2},
+                    "DateNominated": (d - timedelta(days=6)).isoformat(),
+                },
+            ]
+        }
+        set_db(self.dynamodb_client, eligible_data)
+
+        # user3: no nomination, no vote, no recent attendance
+        self.assertIsNone(filmbot.can_retire(DiscordUserID=user_id3))
+        filmbot.retire_user(DiscordUserID=user_id3)
+        db = grab_db(self.dynamodb_client)
+        user_sks = [r["SK"] for r in db[guild]]
+        self.assertNotIn(f"DISCORDUSER#{user_id3}", user_sks)
+        self.assertIn(f"DISCORDUSER#{user_id1}", user_sks)
+        self.assertIn(f"DISCORDUSER#{user_id2}", user_sks)
+        self.assertIn(f"FILM#NOMINATED#{film_id1}", user_sks)
+        self.assertIn(f"FILM#NOMINATED#{film_id2}", user_sks)
+
+        # user1: no vote, no one has voted for their film, no recent attendance
+        # Retiring user1 removes their DISCORDUSER# record and their FILM#NOMINATED# record
+        self.assertIsNone(filmbot.can_retire(DiscordUserID=user_id1))
+        filmbot.retire_user(DiscordUserID=user_id1)
+        db = grab_db(self.dynamodb_client)
+        user_sks = [r["SK"] for r in db[guild]]
+        self.assertNotIn(f"DISCORDUSER#{user_id1}", user_sks)
+        self.assertNotIn(f"FILM#NOMINATED#{film_id1}", user_sks)
+        self.assertIn(f"DISCORDUSER#{user_id2}", user_sks)
+        self.assertIn(f"FILM#NOMINATED#{film_id2}", user_sks)
+
+        # CastVotes > 0 from a previous round should not block retirement when no
+        # user currently has VoteID pointing at the film.
+        # user2 has CastVotes=3 (leftover from old rounds) but no live voters.
+        set_db(
+            self.dynamodb_client,
+            {
+                guild: [
+                    {
+                        "SK": f"DISCORDUSER#{user_id2}",
+                        "NominatedFilmID": film_id2,
+                        "VoteID": None,
+                        "AttendanceVoteID": None,
+                    },
+                    {
+                        "SK": f"FILM#NOMINATED#{film_id2}",
+                        "FilmName": "Film 2",
+                        "IMDbID": None,
+                        "DiscordUserID": user_id2,
+                        "CastVotes": 3,  # leftover from previous rounds
+                        "AttendanceVotes": 0,
+                        "UsersAttended": None,
+                        "DateNominated": d.isoformat(),
+                    },
+                    {
+                        "SK": f"FILM#WATCHED#{(d - timedelta(days=5)).isoformat()}#{film_id3}",
+                        "FilmName": "Watched Film",
+                        "IMDbID": None,
+                        "DiscordUserID": user_id2,
+                        "CastVotes": 0,
+                        "AttendanceVotes": 0,
+                        "UsersAttended": {user_id1},  # user2 not in attendance
+                        "DateNominated": (d - timedelta(days=6)).isoformat(),
+                    },
+                ]
+            },
+        )
+        self.assertIsNone(filmbot.can_retire(DiscordUserID=user_id2))
+        filmbot.retire_user(DiscordUserID=user_id2)
+        db = grab_db(self.dynamodb_client)
+        user_sks = [r["SK"] for r in db[guild]]
+        self.assertNotIn(f"DISCORDUSER#{user_id2}", user_sks)
+        self.assertNotIn(f"FILM#NOMINATED#{film_id2}", user_sks)
+
 
 if __name__ == "__main__":
     unittest.main()

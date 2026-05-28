@@ -828,6 +828,164 @@ class FilmBot:
 
         return film
 
+    def _check_retire(self, *, DiscordUserID):
+        """
+        Returns a ``(reason, nominated_film)`` tuple where:
+          - ``reason`` is ``None`` when the user is eligible, or a human-readable
+            string (suitable for passing to `UserError`) explaining why they are not.
+          - ``nominated_film`` is the ``Film`` record for their current nomination, or ``None`` if they
+            have no nomination or the nominated film record no longer exists.
+        """
+        response = self.client.get_item(
+            TableName=TABLE_NAME,
+            Key={
+                USER_PK: {"S": self.guildID},
+                USER_SK: {"S": f"DISCORDUSER#{DiscordUserID}"},
+            },
+        )
+        if "Item" not in response:
+            raise UserError(f"<@{DiscordUserID}> is not a registered user")
+
+        user = User.fromDict(response["Item"])
+
+        if user.VoteID is not None:
+            return (
+                f"<@{DiscordUserID}> cannot be retired as they have an outstanding vote",
+                None,
+            )
+
+        nominated_film = None
+        if user.NominatedFilmID is not None:
+            film_response = self.client.get_item(
+                TableName=TABLE_NAME,
+                Key={
+                    FILM_PK: {"S": self.guildID},
+                    FILM_SK: {"S": f"FILM#NOMINATED#{user.NominatedFilmID}"},
+                },
+            )
+            nominated_film = (
+                Film.fromDict(film_response["Item"])
+                if "Item" in film_response
+                else None
+            )
+            if nominated_film is not None:
+                all_users = self.get_users()
+                for other_user_id, other_user in all_users.items():
+                    if (
+                        other_user_id != DiscordUserID
+                        and other_user.VoteID == user.NominatedFilmID
+                    ):
+                        return (
+                            f"<@{DiscordUserID}> cannot be retired as other users have voted for their film",
+                            None,
+                        )
+
+        # Watched film records are immutable once written, so this read is
+        # not subject to a race condition.
+        response = self.client.query(
+            TableName=TABLE_NAME,
+            ExpressionAttributeValues={
+                ":GuildID": {"S": self.guildID},
+                ":WatchedPrefix": {"S": "FILM#WATCHED#"},
+            },
+            KeyConditionExpression=(
+                f"{FILM_PK} = :GuildID AND "
+                f"begins_with({FILM_SK}, :WatchedPrefix)"
+            ),
+            ScanIndexForward=False,
+            Limit=5,
+        )
+        for item in response["Items"]:
+            film = Film.fromDict(item)
+            if (
+                film.UsersAttended is not None
+                and DiscordUserID in film.UsersAttended
+            ):
+                return (
+                    f"<@{DiscordUserID}> cannot be retired as they attended one of the last 5 films",
+                    None,
+                )
+
+        return (None, nominated_film)
+
+    def can_retire(self, *, DiscordUserID):
+        """
+        Return ``None`` if the specified `DiscordUserID` is eligible to be
+        retired, or a human-readable reason string if they are not.  All of
+        the following must hold for eligibility:
+          - They have not attended any of the last 5 watched films.
+          - They have not cast a preference vote.
+          - If they have a nomination, no other user has voted for it.
+        """
+        reason, _ = self._check_retire(DiscordUserID=DiscordUserID)
+        return reason
+
+    def retire_user(self, *, DiscordUserID):
+        """
+        Attempt to retire the specified `DiscordUserID` by removing their
+        user record and, if they have a nomination, their
+        corresponding nomination record.  Throw an exception if the user is not
+        registered or any of the following hold:
+          - They attended any of the last 5 watched films.
+          - They have cast a preference vote.
+          - Another user currently has a vote for their nomination.
+        """
+        reason, nominated_film = self._check_retire(
+            DiscordUserID=DiscordUserID
+        )
+        if reason is not None:
+            raise UserError(reason)
+
+        items = [
+            {
+                "Delete": {
+                    "TableName": TABLE_NAME,
+                    "Key": {
+                        USER_PK: {"S": self.guildID},
+                        USER_SK: {"S": f"DISCORDUSER#{DiscordUserID}"},
+                    },
+                    # Guard against the user casting a vote between our read
+                    # and this commit.
+                    "ConditionExpression": f"{USER_VoteID} = :Null",
+                    "ExpressionAttributeValues": {
+                        ":Null": {"NULL": True},
+                    },
+                }
+            }
+        ]
+
+        if nominated_film is not None:
+            items.append(
+                {
+                    "Delete": {
+                        "TableName": TABLE_NAME,
+                        "Key": {
+                            FILM_PK: {"S": self.guildID},
+                            FILM_SK: {
+                                "S": f"FILM#NOMINATED#{nominated_film.FilmID}"
+                            },
+                        },
+                        # Guard against any user voting for this film between
+                        # our read and this commit.  Since we have already checked no one
+                        # voted for this film, the only thing that can change this value
+                        # is someone voting for it.
+                        "ConditionExpression": f"{FILM_CastVotes} = :ReadCastVotes",
+                        "ExpressionAttributeValues": {
+                            ":ReadCastVotes": {
+                                "N": str(nominated_film.CastVotes)
+                            },
+                        },
+                    }
+                }
+            )
+
+        try:
+            self.client.transact_write_items(TransactItems=items)
+        except self.client.exceptions.TransactionCanceledException:
+            raise UserError(
+                f"Unable to retire <@{DiscordUserID}>. Please try again."
+            )
+
     def record_attendance_vote(self, *, DiscordUserID, DateTime):
         """
         Attempt to record that the `DiscordUserID` is present and watching

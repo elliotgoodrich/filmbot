@@ -637,6 +637,220 @@ class TestDiscordHandler(unittest.TestCase):
             },
         )
 
+    def test_retire_user(self):
+        from datetime import datetime, timedelta
+        from filmbot import key_map
+
+        guild_id = "retire-guild"
+        user_id = "user-to-retire"
+        other_user_id = "other-user"
+        film_id = "film-abc"
+
+        d = datetime(2024, 6, 1, 12, 0, 0)
+
+        original_db = {
+            guild_id: [
+                {
+                    "SK": f"DISCORDUSER#{user_id}",
+                    "NominatedFilmID": film_id,
+                    "VoteID": None,
+                    "AttendanceVoteID": None,
+                },
+                {
+                    "SK": f"DISCORDUSER#{other_user_id}",
+                    "NominatedFilmID": None,
+                    "VoteID": None,
+                    "AttendanceVoteID": None,
+                },
+                {
+                    "SK": f"FILM#NOMINATED#{film_id}",
+                    "FilmName": "Film To Retire",
+                    "IMDbID": None,
+                    "DiscordUserID": user_id,
+                    "CastVotes": 0,
+                    "AttendanceVotes": 0,
+                    "UsersAttended": None,
+                    "DateNominated": d.isoformat(),
+                },
+                {
+                    "SK": f"FILM#WATCHED#{(d - timedelta(days=5)).isoformat()}#old-film",
+                    "FilmName": "Old Film",
+                    "IMDbID": None,
+                    "DiscordUserID": other_user_id,
+                    "CastVotes": 0,
+                    "AttendanceVotes": 0,
+                    "UsersAttended": {other_user_id},
+                    "DateNominated": (d - timedelta(days=6)).isoformat(),
+                },
+            ]
+        }
+        set_db(self.dynamodb_client, original_db)
+
+        # /retire when the user attended a recent film should return an informative ephemeral message
+        set_db(
+            self.dynamodb_client,
+            {
+                guild_id: [
+                    {
+                        "SK": f"DISCORDUSER#{user_id}",
+                        "NominatedFilmID": None,
+                        "VoteID": None,
+                        "AttendanceVoteID": None,
+                    },
+                    {
+                        "SK": f"DISCORDUSER#{other_user_id}",
+                        "NominatedFilmID": None,
+                        "VoteID": None,
+                        "AttendanceVoteID": None,
+                    },
+                    {
+                        "SK": f"FILM#WATCHED#{(d - timedelta(days=1)).isoformat()}#recent-film",
+                        "FilmName": "Recent Film",
+                        "IMDbID": None,
+                        "DiscordUserID": other_user_id,
+                        "CastVotes": 0,
+                        "AttendanceVotes": 0,
+                        "UsersAttended": {user_id},
+                        "DateNominated": (d - timedelta(days=2)).isoformat(),
+                    },
+                ]
+            },
+        )
+        result = handle_discord(
+            {
+                "body-json": {
+                    "type": DiscordRequest.APPLICATION_COMMAND,
+                    "data": {
+                        "name": "retire",
+                        "options": [{"value": user_id}],
+                    },
+                    "guild_id": guild_id,
+                    "member": {"user": {"id": other_user_id}},
+                }
+            },
+            self.dynamodb_client,
+        )
+        self.assertEqual(
+            result,
+            {
+                "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
+                "data": {
+                    "content": f"<@{user_id}> cannot be retired as they attended one of the last 5 films",
+                    "flags": DiscordFlag.EPHEMERAL_FLAG,
+                },
+            },
+        )
+
+        # Reset to the original eligible DB state
+        set_db(self.dynamodb_client, original_db)
+
+        # /retire prompts for confirmation
+        result = handle_discord(
+            {
+                "body-json": {
+                    "type": DiscordRequest.APPLICATION_COMMAND,
+                    "data": {
+                        "name": "retire",
+                        "options": [{"value": user_id}],
+                    },
+                    "guild_id": guild_id,
+                    "member": {"user": {"id": other_user_id}},
+                }
+            },
+            self.dynamodb_client,
+        )
+        self.assertEqual(
+            result,
+            {
+                "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
+                "data": {
+                    "content": (
+                        f"Please confirm whether you would like to retire <@{user_id}>.\n"
+                        f"The following checks have passed:\n"
+                        f"- <@{user_id}> has not cast a preference vote\n"
+                        f"- No other user is currently voting for their nominated film\n"
+                        f"- <@{user_id}> has not attended any of the last 5 films"
+                    ),
+                    "flags": DiscordFlag.EPHEMERAL_FLAG,
+                    "components": [
+                        {
+                            "type": DiscordMessageComponent.ACTION_ROW,
+                            "components": [
+                                {
+                                    "type": DiscordMessageComponent.BUTTON,
+                                    "label": "Confirm",
+                                    "style": DiscordStyle.DANGER,
+                                    "custom_id": MessageComponentID.CONFIRM_RETIRE
+                                    + user_id,
+                                }
+                            ],
+                        }
+                    ],
+                },
+            },
+        )
+
+        # User should still be in the DB
+        from filmbot import FilmBot
+
+        still_registered = FilmBot(
+            DynamoDBClient=self.dynamodb_client, GuildID=guild_id
+        ).get_users()
+        self.assertIn(user_id, still_registered)
+
+        # Pressing the Confirm button should actually retire the user
+        result = handle_discord(
+            {
+                "body-json": {
+                    "type": DiscordRequest.MESSAGE_COMPONENT,
+                    "data": {
+                        "component_type": DiscordMessageComponent.BUTTON,
+                        "custom_id": MessageComponentID.CONFIRM_RETIRE
+                        + user_id,
+                    },
+                    "guild_id": guild_id,
+                    "member": {"user": {"id": other_user_id}},
+                }
+            },
+            self.dynamodb_client,
+        )
+        self.assertEqual(
+            result,
+            {
+                "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
+                "data": {
+                    "content": f"<@{user_id}> has been retired.",
+                },
+            },
+        )
+
+        # User should now be gone
+        after_retire = FilmBot(
+            DynamoDBClient=self.dynamodb_client, GuildID=guild_id
+        ).get_users()
+        self.assertNotIn(user_id, after_retire)
+
+        # Pressing Confirm again (e.g. double-click) should give an ephemeral error
+        result = handle_discord(
+            {
+                "body-json": {
+                    "type": DiscordRequest.MESSAGE_COMPONENT,
+                    "data": {
+                        "component_type": DiscordMessageComponent.BUTTON,
+                        "custom_id": MessageComponentID.CONFIRM_RETIRE
+                        + user_id,
+                    },
+                    "guild_id": guild_id,
+                    "member": {"user": {"id": other_user_id}},
+                }
+            },
+            self.dynamodb_client,
+        )
+        self.assertEqual(
+            result["type"], DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE
+        )
+        self.assertEqual(result["data"]["flags"], DiscordFlag.EPHEMERAL_FLAG)
+
 
 if __name__ == "__main__":
     unittest.main()
