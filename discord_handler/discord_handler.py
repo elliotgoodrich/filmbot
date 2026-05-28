@@ -54,6 +54,7 @@ class MessageComponentID:
     ATTENDANCE = "register_attendance"
     SHAME = "shame"
     MORE_HISTORY = "more_history#"
+    CONFIRM_RETIRE = "confirm_retire#"
 
 
 def films_to_choices(films):
@@ -121,7 +122,7 @@ def display_watched(f: Film, user):
 
 
 def get_history(filmbot: FilmBot, user, nextKey=None, MessagePrefix=""):
-    (films, nextKey) = filmbot.get_watched_films_after(
+    films, nextKey = filmbot.get_watched_films_after(
         Limit=HISTORY_LIMIT, ExclusiveStartKey=nextKey
     )
     if films:
@@ -185,12 +186,13 @@ def register_attendance(*, FilmBot, DiscordUserID, DateTime):
 
 def handle_application_command(event, client):
     """
-    Handle the 6 application commands that we support:
+    Handle the application commands that we support:
       * /nominate [FilmName]
       * /vote [FilmID]
       * /peek
       * /watch [FilmID]
       * /here
+      * /retire [user]
     """
     now = dt.datetime.now()
     body = event["body-json"]
@@ -348,6 +350,44 @@ def handle_application_command(event, client):
             user_id,
             MessagePrefix="Here are the films that have been watched:\n",
         )
+    elif command == "retire":
+        target_user_id = body["data"]["options"][0]["value"]
+        reason = filmbot.can_retire(DiscordUserID=target_user_id)
+        if reason is not None:
+            return {
+                "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
+                "data": {
+                    "content": reason,
+                    "flags": DiscordFlag.EPHEMERAL_FLAG,
+                },
+            }
+        return {
+            "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
+            "data": {
+                "content": (
+                    f"Please confirm whether you would like to retire <@{target_user_id}>.\n"
+                    f"The following checks have passed:\n"
+                    f"- <@{target_user_id}> has not cast a preference vote\n"
+                    f"- No other user is currently voting for their nominated film\n"
+                    f"- <@{target_user_id}> has not attended any of the last 5 films"
+                ),
+                "flags": DiscordFlag.EPHEMERAL_FLAG,
+                "components": [
+                    {
+                        "type": DiscordMessageComponent.ACTION_ROW,
+                        "components": [
+                            {
+                                "type": DiscordMessageComponent.BUTTON,
+                                "label": "Confirm",
+                                "style": DiscordStyle.DANGER,
+                                "custom_id": MessageComponentID.CONFIRM_RETIRE
+                                + target_user_id,
+                            }
+                        ],
+                    }
+                ],
+            },
+        }
     else:
         raise Exception(f"Unknown application command (/{command})")
 
@@ -474,6 +514,18 @@ def handle_message_component(event, client):
             body["member"]["user"]["id"],
             nextKey=custom_id.removeprefix(MessageComponentID.MORE_HISTORY),
         )
+    elif custom_id.startswith(MessageComponentID.CONFIRM_RETIRE):
+        filmbot = FilmBot(DynamoDBClient=client, GuildID=body["guild_id"])
+        target_user_id = custom_id.removeprefix(
+            MessageComponentID.CONFIRM_RETIRE
+        )
+        filmbot.retire_user(DiscordUserID=target_user_id)
+        return {
+            "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
+            "data": {
+                "content": f"<@{target_user_id}> has been retired.",
+            },
+        }
     else:
         raise Exception(
             f"Unknown 'custom_id' for button component ({custom_id})!"

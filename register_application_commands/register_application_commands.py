@@ -9,6 +9,7 @@
 #   - /peek
 #   - /watch
 #   - /here
+#   - /retire
 # so that they are visible and accessible within Discord.
 #
 # Usage
@@ -79,14 +80,22 @@ commands = [
         "description": "Register attendance for the film currently being watched",
     },
     {
-        "name": "naughty",
-        "type": 1,
-        "description": "Display the users with outstanding tasks",
-    },
-    {
         "name": "history",
         "type": 1,
         "description": "Display the films that have previously been watched",
+    },
+    {
+        "name": "retire",
+        "type": 1,
+        "description": "Retire a user who has been inactive",
+        "options": [
+            {
+                "name": "user",
+                "description": "The user to retire",
+                "type": 6,
+                "required": True,
+            }
+        ],
     },
 ]
 
@@ -95,4 +104,4 @@ headers = {"Authorization": f'Bot {config["bot_token"]["value"]}'}
 for command in commands:
     r = requests.post(url, headers=headers, json=command)
     print(r.json())
-    time.sleep(1)
+    time.sleep(3)
