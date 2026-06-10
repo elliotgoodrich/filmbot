@@ -62,7 +62,7 @@ def films_to_choices(films):
         map(
             lambda n: {
                 "name": n.FilmName,
-                "value": n.FilmID,
+                "value": n.DiscordUserID,
             },
             films,
         )
@@ -239,11 +239,11 @@ def handle_application_command(event, client):
             },
         }
     elif command == "vote":
-        film_id = body["data"]["options"][0]["value"]
-        status = filmbot.cast_preference_vote(
-            DiscordUserID=user_id, FilmID=film_id
+        nominator_id = body["data"]["options"][0]["value"]
+        status, film = filmbot.cast_preference_vote(
+            DiscordUserID=user_id, NominatorUserID=nominator_id
         )
-        film_name = filmbot.get_nominated_film(film_id).FilmName
+        film_name = film.FilmName
         if status == VotingStatus.COMPLETE:
             return {
                 "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -283,7 +283,7 @@ def handle_application_command(event, client):
             )
 
             toNominate = list(
-                filter(lambda u: u["User"].NominatedFilmID is None, users)
+                filter(lambda u: not u["User"].has_nomination, users)
             )
             toVote = list(filter(lambda u: u["User"].VoteID is None, users))
 
@@ -324,9 +324,11 @@ def handle_application_command(event, client):
         return result
 
     elif command == "watch":
-        film_id = body["data"]["options"][0]["value"]
+        nominator_id = body["data"]["options"][0]["value"]
         film = filmbot.start_watching_film(
-            FilmID=film_id, DateTime=now, PresentUserIDs=[user_id]
+            NominatorUserID=nominator_id,
+            DateTime=now,
+            PresentUserIDs=[user_id],
         )
         return {
             "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -491,7 +493,7 @@ def handle_message_component(event, client):
         filmbot = FilmBot(DynamoDBClient=client, GuildID=body["guild_id"])
         users = filmbot.get_users().values()
         message = []
-        toNominate = list(filter(lambda u: u.NominatedFilmID is None, users))
+        toNominate = list(filter(lambda u: not u.has_nomination, users))
         toVote = list(filter(lambda u: u.VoteID is None, users))
 
         def display_user(user):

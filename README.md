@@ -17,38 +17,39 @@ The partition key will be Discord Guild ID.
 
 The sort key will take one of the following forms:
   1. `"DISCORDUSER#" + DiscordUserID`
-  2. `"FILM#NOMINATED#" + FilmID`
-  3. `"FILM#WATCHED#" + DateTimeStarted + "." + FilmID`
+  2. `"FILM#WATCHED#" + DateTimeStarted + "#" + FilmID`
 
 Where:
   * `DiscordUserID` is the user's Discord ID (supplied by Discord)
   * `FilmID` is a UUID that we generate per film
-  * `DateStarted` is an ISO 8601 formatted string of the UTC datetime that
+  * `DateTimeStarted` is an ISO 8601 formatted string of the UTC datetime that
      film was started being watched
 
 For example:
   1. `"DISCORDUSER#16393729388392"`
-  2. `"FILM#NOMINATED#76988c8a-a15d-48a9-8805-5c7f1723e298"`
-  3. `"FILM#WATCHED#2022-01-19T21:35:58Z.76988c8a-a15d-48a9-8805-5c7f1723e298"`
+  2. `"FILM#WATCHED#2022-01-19T21:35:58.000000#76988c8a-a15d-48a9-8805-5c7f1723e298"`
 
 ### "DISCORDUSER#*" Record Format
 
-The records with sort key starting with `"DISCORDUSER#*"` contains the following
-fields:
-  * `NominatedFilmID` is a string matching a `"FILM#NOMINATED#*"` sort key that represents this users nominated film, or `NULL` if this user has no currently nominated film
-  * `VoteID` is a string matching a `"FILM#NOMINATED#*"` sort key that represents this user's voted film, or `NULL` if this user has not voted yet in this round
-  * `AttendanceVoteID` is a string matching a `"FILM#WATCHED#*.*"` sort key that represents this user's attendance vote for the last watched film, or `NULL` if this user did not watch the latest film
+The records with sort key starting with `"DISCORDUSER#"` contain the following fields:
+  * `VoteID` is a string matching another user's `DiscordUserID` that represents the user this person has voted for, or `NULL` if this user has not voted yet in this round
+  * `AttendanceVoteID` is a string matching a `FilmID` that represents the last film this user recorded attendance for, or `NULL` if this user has not recorded attendance for the latest watched film
 
-***WARNING*** There cannot be any entries that appear alphabetically between `DISCORDUSER#` and `FILM#NOMINATED`.  This is because we would like to get all users and all nominated films in one go in order to display what the current voting situation is.
-
-### "FILM#*" Record Format
-
-The records with sort key starting with `"FILM.*"` contains the following fields:
+When a user has an active nomination, the following additional fields are present:
+  * `FilmID` is a UUID identifying the nominated film (also used as part of the `"FILM#WATCHED#"` sort key when the film is later watched)
   * `FilmName` is a string representation of the film's name
-  * `DiscordUserID` is a string matching the users's Discord ID who nominated this film
-  * `IMDbID` is `NULL` or an IMDB ID (e.g. "0113375")
-  * `DiscordUserID` is a string matching the users's Discord ID who nominated this film
-  * `CastVotes` is a non-negative integer representing the number of votes cast for this film
+  * `IMDbID` is `NULL` or an IMDb ID (e.g. `"0113375"`)
+  * `CastVotes` is a non-negative integer representing the number of preference votes cast for this film
+  * `AttendanceVotes` is a non-negative integer representing the number of attendance votes accumulated by this user's nominations over time
+  * `DateNominated` is an ISO 8601 formatted string of the UTC datetime this film was nominated
+
+### "FILM#WATCHED#*" Record Format
+
+The records with sort key starting with `"FILM#WATCHED#"` contain the following fields:
+  * `FilmName` is a string representation of the film's name
+  * `DiscordUserID` is the Discord ID of the user who nominated this film
+  * `IMDbID` is `NULL` or an IMDb ID (e.g. `"0113375"`)
+  * `CastVotes` is a non-negative integer representing the number of preference votes the film received
   * `AttendanceVotes` is a non-negative integer representing the number of attendance votes for the user who nominated this film
-  * `UsersAttended` is `NULL` for unwatched films or a non-empty set containing the user's Discord IDs of those who have attended (DynamoDB does not support empty string sets)
-  * `DateNominated` is an ISO 8601 formatting string of the UTC datetime this film was nominated
+  * `UsersAttended` is `NULL` or a non-empty set of Discord user IDs of those who attended (DynamoDB does not support empty string sets)
+  * `DateNominated` is an ISO 8601 formatted string of the UTC datetime this film was nominated

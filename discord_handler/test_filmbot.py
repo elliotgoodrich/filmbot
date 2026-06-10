@@ -16,6 +16,7 @@ from filmbot import (
 from datetime import datetime, timedelta
 from uuid import uuid1
 from UserError import UserError
+from embed_nominations_migration import migrate
 import copy
 
 AWS_REGION = "eu-west-2"
@@ -71,6 +72,7 @@ def set_db(client, data):
     )
 
     if not data:
+        migrate(client, dry_run=False)
         return
 
     # Add data
@@ -89,6 +91,7 @@ def set_db(client, data):
             )
 
     client.transact_write_items(TransactItems=items)
+    migrate(client, dry_run=False)
 
 
 class snapshot:
@@ -159,7 +162,6 @@ class TestFilmBot(unittest.TestCase):
             {
                 user_id1: User(
                     DiscordUserID=user_id1,
-                    NominatedFilmID=None,
                     VoteID=None,
                     AttendanceVoteID=None,
                 )
@@ -170,6 +172,7 @@ class TestFilmBot(unittest.TestCase):
         film_id = "fake-film-id"
         film_id2 = "fake-film-id2"
         guild2 = "second-guild"
+        d = datetime(2001, 1, 1, 5, 0, 0, 123)
         set_db(
             self.dynamodb_client,
             {
@@ -179,6 +182,16 @@ class TestFilmBot(unittest.TestCase):
                         "NominatedFilmID": film_id,
                         "VoteID": film_id2,
                         "AttendanceVoteID": None,
+                    },
+                    {
+                        "SK": f"FILM#NOMINATED#{film_id}",
+                        "FilmName": "Fake Film",
+                        "IMDbID": None,
+                        "DiscordUserID": user_id1,
+                        "CastVotes": 0,
+                        "AttendanceVotes": 0,
+                        "UsersAttended": None,
+                        "DateNominated": d.isoformat(),
                     },
                     {
                         "SK": f"DISCORDUSER#{user_id2}",
@@ -198,19 +211,26 @@ class TestFilmBot(unittest.TestCase):
             },
         )
 
+        # After migration: user1 gets film embedded; VoteID film_id2 has no
+        # FILM#NOMINATED# record so it's cleared. user2's VoteID film_id maps
+        # to user_id1 (nominator of film_id).
         self.assertEqual(
             filmbot.get_users(),
             {
                 user_id1: User(
                     DiscordUserID=user_id1,
-                    NominatedFilmID=film_id,
-                    VoteID=film_id2,
+                    VoteID=None,
                     AttendanceVoteID=None,
+                    FilmID=film_id,
+                    FilmName="Fake Film",
+                    IMDbID=None,
+                    CastVotes=0,
+                    AttendanceVotes=0,
+                    DateNominated=d,
                 ),
                 user_id2: User(
                     DiscordUserID=user_id2,
-                    NominatedFilmID=None,
-                    VoteID=film_id,
+                    VoteID=user_id1,
                     AttendanceVoteID=film_id2,
                 ),
             },
@@ -288,6 +308,39 @@ class TestFilmBot(unittest.TestCase):
                 "DateNominated": d.isoformat(),
             },
         ]
+        # DISCORDUSER# records so migration can embed film data
+        input_users = [
+            {
+                "SK": "DISCORDUSER#UserA",
+                "NominatedFilmID": "film1",
+                "VoteID": None,
+                "AttendanceVoteID": None,
+            },
+            {
+                "SK": "DISCORDUSER#UserB",
+                "NominatedFilmID": "film2",
+                "VoteID": None,
+                "AttendanceVoteID": None,
+            },
+            {
+                "SK": "DISCORDUSER#UserC",
+                "NominatedFilmID": "film3",
+                "VoteID": None,
+                "AttendanceVoteID": None,
+            },
+            {
+                "SK": "DISCORDUSER#UserD",
+                "NominatedFilmID": "film4",
+                "VoteID": None,
+                "AttendanceVoteID": None,
+            },
+            {
+                "SK": "DISCORDUSER#UserE",
+                "NominatedFilmID": "film5",
+                "VoteID": None,
+                "AttendanceVoteID": None,
+            },
+        ]
 
         expected = [
             Film(
@@ -351,7 +404,7 @@ class TestFilmBot(unittest.TestCase):
         # sorting the rows
         count = 0
         for input in permutations(input_films):
-            set_db(self.dynamodb_client, {guild: input})
+            set_db(self.dynamodb_client, {guild: list(input) + input_users})
 
             self.assertEqual(filmbot.get_nominations(), expected)
             count += 1
@@ -474,13 +527,20 @@ class TestFilmBot(unittest.TestCase):
             },
         ]
 
+        # After migration: VoteIDs (film IDs) are replaced with the nominator's
+        # Discord user ID. Film data is embedded in each DISCORDUSER# record.
         expected = [
             {
                 "User": User(
                     DiscordUserID="UserA",
-                    NominatedFilmID="film1",
-                    VoteID="film2",
+                    VoteID="UserB",  # voted for film2 → nominator is UserB
                     AttendanceVoteID=None,
+                    FilmID="film1",
+                    FilmName="FilmName1",
+                    IMDbID=None,
+                    CastVotes=0,
+                    AttendanceVotes=7,
+                    DateNominated=d,
                 ),
                 "Film": Film(
                     FilmID="film1",
@@ -497,9 +557,14 @@ class TestFilmBot(unittest.TestCase):
             {
                 "User": User(
                     DiscordUserID="UserB",
-                    NominatedFilmID="film2",
                     VoteID=None,
                     AttendanceVoteID=None,
+                    FilmID="film2",
+                    FilmName="FilmName2",
+                    IMDbID="0234567",
+                    CastVotes=3,
+                    AttendanceVotes=3,
+                    DateNominated=d,
                 ),
                 "Film": Film(
                     FilmID="film2",
@@ -516,9 +581,14 @@ class TestFilmBot(unittest.TestCase):
             {
                 "User": User(
                     DiscordUserID="UserD",
-                    NominatedFilmID="film4",
                     VoteID=None,
                     AttendanceVoteID=None,
+                    FilmID="film4",
+                    FilmName="FilmName4",
+                    IMDbID="03456789",
+                    CastVotes=2,
+                    AttendanceVotes=4,
+                    DateNominated=d,
                 ),
                 "Film": Film(
                     FilmID="film4",
@@ -535,9 +605,14 @@ class TestFilmBot(unittest.TestCase):
             {
                 "User": User(
                     DiscordUserID="UserE",
-                    NominatedFilmID="film5",
                     VoteID=None,
                     AttendanceVoteID=None,
+                    FilmID="film5",
+                    FilmName="FilmName5",
+                    IMDbID="04567890",
+                    CastVotes=2,
+                    AttendanceVotes=4,
+                    DateNominated=d + timedelta(seconds=1),
                 ),
                 "Film": Film(
                     FilmID="film5",
@@ -554,9 +629,14 @@ class TestFilmBot(unittest.TestCase):
             {
                 "User": User(
                     DiscordUserID="UserC",
-                    NominatedFilmID="film3",
-                    VoteID="film1",
+                    VoteID="UserA",  # voted for film1 → nominator is UserA
                     AttendanceVoteID=None,
+                    FilmID="film3",
+                    FilmName="FilmName3",
+                    IMDbID="0345678",
+                    CastVotes=2,
+                    AttendanceVotes=3,
+                    DateNominated=d,
                 ),
                 "Film": Film(
                     FilmID="film3",
@@ -573,8 +653,7 @@ class TestFilmBot(unittest.TestCase):
             {
                 "User": User(
                     DiscordUserID="UserF",
-                    NominatedFilmID=None,
-                    VoteID="film4",
+                    VoteID="UserD",  # voted for film4 → nominator is UserD
                     AttendanceVoteID=None,
                 ),
                 "Film": None,
@@ -582,7 +661,6 @@ class TestFilmBot(unittest.TestCase):
             {
                 "User": User(
                     DiscordUserID="UserG",
-                    NominatedFilmID=None,
                     VoteID=None,
                     AttendanceVoteID=None,
                 ),
@@ -622,6 +700,13 @@ class TestFilmBot(unittest.TestCase):
                 "AttendanceVotes": 2,
                 "UsersAttended": set(["A", "B", "C"]),
                 "DateNominated": (d - timedelta(seconds=10)).isoformat(),
+            },
+            {
+                # Nominated user should not appear in watched films
+                "SK": "DISCORDUSER#UserB",
+                "NominatedFilmID": "film2",
+                "VoteID": None,
+                "AttendanceVoteID": None,
             },
             {
                 "SK": "FILM#NOMINATED#film2",
@@ -748,6 +833,21 @@ class TestFilmBot(unittest.TestCase):
                 "DateNominated": (d + timedelta(seconds=3)).isoformat(),
             },
         ]
+        # DISCORDUSER# records so migration can embed film data for nominations
+        input_users = [
+            {
+                "SK": "DISCORDUSER#UserA",
+                "NominatedFilmID": "film1",
+                "VoteID": None,
+                "AttendanceVoteID": None,
+            },
+            {
+                "SK": "DISCORDUSER#UserB",
+                "NominatedFilmID": "film2",
+                "VoteID": None,
+                "AttendanceVoteID": None,
+            },
+        ]
 
         expected = [
             Film(
@@ -800,7 +900,7 @@ class TestFilmBot(unittest.TestCase):
         # sorting the rows
         count = 0
         for input in permutations(input_films):
-            set_db(self.dynamodb_client, {guild: input})
+            set_db(self.dynamodb_client, {guild: list(input) + input_users})
 
             self.assertEqual(filmbot.get_all_films(), expected)
             count += 1
@@ -831,19 +931,14 @@ class TestFilmBot(unittest.TestCase):
                 guild1: [
                     {
                         "SK": f"DISCORDUSER#{user_id1}",
-                        "NominatedFilmID": film_id1,
-                        "VoteID": None,
-                        "AttendanceVoteID": None,
-                    },
-                    {
-                        "SK": f"FILM#NOMINATED#{film_id1}",
+                        "FilmID": film_id1,
                         "FilmName": film_name1,
-                        "DiscordUserID": user_id1,
                         "IMDbID": imdb1,
                         "CastVotes": 0,
                         "AttendanceVotes": 0,
-                        "UsersAttended": None,
                         "DateNominated": time1.isoformat(),
+                        "VoteID": None,
+                        "AttendanceVoteID": None,
                     },
                 ]
             },
@@ -876,52 +971,28 @@ class TestFilmBot(unittest.TestCase):
             guild1: [
                 {
                     "SK": f"DISCORDUSER#{user_id1}",
-                    "NominatedFilmID": film_id1,
+                    "FilmID": film_id1,
+                    "FilmName": film_name1,
+                    "IMDbID": imdb1,
+                    "CastVotes": 0,
+                    "AttendanceVotes": 0,
+                    "DateNominated": time1.isoformat(),
                     "VoteID": None,
                     "AttendanceVoteID": None,
                 },
                 {
                     "SK": f"DISCORDUSER#{user_id2}",
-                    "NominatedFilmID": film_id2,
+                    "FilmID": film_id2,
+                    "FilmName": film_name2,
+                    "IMDbID": imdb2,
+                    "CastVotes": 0,
+                    "AttendanceVotes": 0,
+                    "DateNominated": time2.isoformat(),
                     "VoteID": None,
                     "AttendanceVoteID": None,
                 },
-                {
-                    "SK": f"FILM#NOMINATED#{film_id1}",
-                    "FilmName": film_name1,
-                    "DiscordUserID": user_id1,
-                    "IMDbID": imdb1,
-                    "CastVotes": 0,
-                    "AttendanceVotes": 0,
-                    "UsersAttended": None,
-                    "DateNominated": time1.isoformat(),
-                },
-                {
-                    "SK": f"FILM#NOMINATED#{film_id2}",
-                    "FilmName": film_name2,
-                    "IMDbID": imdb2,
-                    "DiscordUserID": user_id2,
-                    "CastVotes": 0,
-                    "AttendanceVotes": 0,
-                    "UsersAttended": None,
-                    "DateNominated": time2.isoformat(),
-                },
             ]
         }
-        self.assertEqual(grab_db(self.dynamodb_client), expected)
-
-        # Check we can't reuse film IDs
-        user_id3 = "user3"
-        film_name3 = "My Film 3: The Return of The Unit Test"
-        imdb3 = "012343"
-        with self.assertRaises(UserError):
-            filmbot.nominate_film(
-                DiscordUserID=user_id3,
-                FilmName=film_name3,
-                IMDbID=imdb3,
-                NewFilmID=film_id1,
-                DateTime=time1,
-            )
         self.assertEqual(grab_db(self.dynamodb_client), expected)
 
         guild2 = "guild2"
@@ -942,53 +1013,38 @@ class TestFilmBot(unittest.TestCase):
                 guild1: [
                     {
                         "SK": f"DISCORDUSER#{user_id1}",
-                        "NominatedFilmID": film_id1,
+                        "FilmID": film_id1,
+                        "FilmName": film_name1,
+                        "IMDbID": imdb1,
+                        "CastVotes": 0,
+                        "AttendanceVotes": 0,
+                        "DateNominated": time1.isoformat(),
                         "VoteID": None,
                         "AttendanceVoteID": None,
                     },
                     {
                         "SK": f"DISCORDUSER#{user_id2}",
-                        "NominatedFilmID": film_id2,
-                        "VoteID": None,
-                        "AttendanceVoteID": None,
-                    },
-                    {
-                        "SK": f"FILM#NOMINATED#{film_id1}",
-                        "FilmName": film_name1,
-                        "IMDbID": imdb1,
-                        "DiscordUserID": user_id1,
-                        "CastVotes": 0,
-                        "AttendanceVotes": 0,
-                        "UsersAttended": None,
-                        "DateNominated": time1.isoformat(),
-                    },
-                    {
-                        "SK": f"FILM#NOMINATED#{film_id2}",
+                        "FilmID": film_id2,
                         "FilmName": film_name2,
                         "IMDbID": imdb2,
-                        "DiscordUserID": user_id2,
                         "CastVotes": 0,
                         "AttendanceVotes": 0,
-                        "UsersAttended": None,
                         "DateNominated": time2.isoformat(),
+                        "VoteID": None,
+                        "AttendanceVoteID": None,
                     },
                 ],
                 guild2: [
                     {
                         "SK": f"DISCORDUSER#{user_id1}",
-                        "NominatedFilmID": film_id1,
-                        "VoteID": None,
-                        "AttendanceVoteID": None,
-                    },
-                    {
-                        "SK": f"FILM#NOMINATED#{film_id1}",
+                        "FilmID": film_id1,
                         "FilmName": film_name1,
                         "IMDbID": imdb1,
-                        "DiscordUserID": user_id1,
                         "CastVotes": 0,
                         "AttendanceVotes": 0,
-                        "UsersAttended": None,
                         "DateNominated": time1.isoformat(),
+                        "VoteID": None,
+                        "AttendanceVoteID": None,
                     },
                 ],
             },
@@ -1013,55 +1069,121 @@ class TestFilmBot(unittest.TestCase):
         film_watched = "Film4"
         d = datetime(2010, 1, 2, 3, 4, 5, 678)
         ages_ago = d - timedelta(days=100)
+
+        # Load old-schema data; migration runs inside set_db
+        set_db(
+            self.dynamodb_client,
+            {
+                guild1: [
+                    {
+                        "SK": f"DISCORDUSER#{user_id1}",
+                        "NominatedFilmID": film_id1,
+                        "VoteID": None,
+                        "AttendanceVoteID": "dummy",
+                    },
+                    {
+                        "SK": f"DISCORDUSER#{user_id2}",
+                        "NominatedFilmID": film_id2,
+                        "VoteID": None,
+                        "AttendanceVoteID": "dummy2",
+                    },
+                    {
+                        "SK": f"DISCORDUSER#{user_id3}",
+                        "NominatedFilmID": film_id3,
+                        "VoteID": None,
+                        "AttendanceVoteID": None,
+                    },
+                    {
+                        "SK": f"FILM#NOMINATED#{film_id1}",
+                        "FilmName": "My Film 1",
+                        "IMDbID": imdb1,
+                        "DiscordUserID": user_id1,
+                        "CastVotes": 0,
+                        "AttendanceVotes": 0,
+                        "UsersAttended": None,
+                        "DateNominated": d.isoformat(),
+                    },
+                    {
+                        "SK": f"FILM#NOMINATED#{film_id2}",
+                        "FilmName": "My Film 2",
+                        "IMDbID": imdb2,
+                        "DiscordUserID": user_id2,
+                        "CastVotes": 0,
+                        "AttendanceVotes": 0,
+                        "UsersAttended": None,
+                        "DateNominated": d.isoformat(),
+                    },
+                    {
+                        "SK": f"FILM#NOMINATED#{film_id3}",
+                        "FilmName": "My Film 3",
+                        "IMDbID": imdb3,
+                        "DiscordUserID": user_id3,
+                        "CastVotes": 0,
+                        "AttendanceVotes": 0,
+                        "UsersAttended": None,
+                        "DateNominated": d.isoformat(),
+                    },
+                    {
+                        "SK": f"FILM#WATCHED#{ages_ago.isoformat()}#Super-old-film",
+                        "FilmName": "My Film 4 (Watched)",
+                        "IMDbID": imdb4,
+                        "DiscordUserID": user_id1,
+                        "CastVotes": 0,
+                        "AttendanceVotes": 0,
+                        "UsersAttended": None,
+                        "DateNominated": ages_ago.isoformat(),
+                    },
+                    {
+                        "SK": f"FILM#WATCHED#{d.isoformat()}#{film_watched}",
+                        "FilmName": "My Film 5 (Watched)",
+                        "IMDbID": imdb5,
+                        "DiscordUserID": user_id1,
+                        "CastVotes": 0,
+                        "AttendanceVotes": 0,
+                        "UsersAttended": None,
+                        "DateNominated": d.isoformat(),
+                    },
+                ]
+            },
+        )
+
+        # Post-migration expected state: DISCORDUSER# records embed film data,
+        # FILM#NOMINATED# records are gone.
+        # Sorted by SK: DISCORDUSER#User1 < User2 < User3 < FILM#WATCHED#{ages_ago}... < FILM#WATCHED#{d}...
         expected = {
             guild1: [
                 {
                     "SK": f"DISCORDUSER#{user_id1}",
-                    "NominatedFilmID": film_id1,
+                    "FilmID": film_id1,
+                    "FilmName": "My Film 1",
+                    "IMDbID": imdb1,
+                    "CastVotes": 0,
+                    "AttendanceVotes": 0,
+                    "DateNominated": d.isoformat(),
                     "VoteID": None,
                     "AttendanceVoteID": "dummy",
                 },
                 {
                     "SK": f"DISCORDUSER#{user_id2}",
-                    "NominatedFilmID": film_id2,
+                    "FilmID": film_id2,
+                    "FilmName": "My Film 2",
+                    "IMDbID": imdb2,
+                    "CastVotes": 0,
+                    "AttendanceVotes": 0,
+                    "DateNominated": d.isoformat(),
                     "VoteID": None,
                     "AttendanceVoteID": "dummy2",
                 },
                 {
                     "SK": f"DISCORDUSER#{user_id3}",
-                    "NominatedFilmID": None,
-                    "VoteID": None,
-                    "AttendanceVoteID": None,
-                },
-                {
-                    "SK": f"FILM#NOMINATED#{film_id1}",
-                    "FilmName": "My Film 1",
-                    "IMDbID": imdb1,
-                    "DiscordUserID": user_id1,
-                    "CastVotes": 0,
-                    "AttendanceVotes": 0,
-                    "UsersAttended": None,
-                    "DateNominated": d.isoformat(),
-                },
-                {
-                    "SK": f"FILM#NOMINATED#{film_id2}",
-                    "FilmName": "My Film 2",
-                    "IMDbID": imdb2,
-                    "DiscordUserID": user_id2,
-                    "CastVotes": 0,
-                    "AttendanceVotes": 0,
-                    "UsersAttended": None,
-                    "DateNominated": d.isoformat(),
-                },
-                {
-                    "SK": f"FILM#NOMINATED#{film_id3}",
+                    "FilmID": film_id3,
                     "FilmName": "My Film 3",
                     "IMDbID": imdb3,
-                    "DiscordUserID": "dummy",
                     "CastVotes": 0,
                     "AttendanceVotes": 0,
-                    "UsersAttended": None,
                     "DateNominated": d.isoformat(),
+                    "VoteID": None,
+                    "AttendanceVoteID": None,
                 },
                 {
                     "SK": f"FILM#WATCHED#{ages_ago.isoformat()}#Super-old-film",
@@ -1086,57 +1208,45 @@ class TestFilmBot(unittest.TestCase):
             ]
         }
 
-        # Create indices into `expected` that we can use later on
+        # Indices into `expected`
         USER_1 = 0
         USER_2 = 1
         USER_3 = 2
-        FILM_1 = 3
-        FILM_2 = 4
-        FILM_3 = 5
 
-        # Set up the database
-        set_db(self.dynamodb_client, expected)
         self.assertEqual(grab_db(self.dynamodb_client), expected)
         filmbot = FilmBot(DynamoDBClient=self.dynamodb_client, GuildID=guild1)
 
         # Check we can't vote if we're not registered
         with self.assertRaises(UserError):
             filmbot.cast_preference_vote(
-                DiscordUserID="not registered", FilmID=film_id1
+                DiscordUserID="not registered", NominatorUserID=user_id1
             )
         self.assertEqual(grab_db(self.dynamodb_client), expected)
 
-        # Check we can't vote for an already watched film
+        # Check we can't vote for a user without a nomination
         with self.assertRaises(UserError):
             filmbot.cast_preference_vote(
-                DiscordUserID=user_id1, FilmID=film_watched
-            )
-        self.assertEqual(grab_db(self.dynamodb_client), expected)
-
-        # Check we can't vote for a non-existent film
-        with self.assertRaises(UserError):
-            filmbot.cast_preference_vote(
-                DiscordUserID=user_id1, FilmID="not existent"
+                DiscordUserID=user_id1, NominatorUserID="not existent"
             )
         self.assertEqual(grab_db(self.dynamodb_client), expected)
 
         # Check we can vote with no previous vote
         self.assertEqual(
             filmbot.cast_preference_vote(
-                DiscordUserID=user_id1, FilmID=film_id2
-            ),
+                DiscordUserID=user_id1, NominatorUserID=user_id2
+            )[0],
             VotingStatus.UNCOMPLETE,
         )
 
-        expected[guild1][FILM_2]["CastVotes"] += 1
-        expected[guild1][USER_1]["VoteID"] = film_id2
+        expected[guild1][USER_2]["CastVotes"] += 1
+        expected[guild1][USER_1]["VoteID"] = user_id2
         self.assertEqual(grab_db(self.dynamodb_client), expected)
 
-        # Check we can vote for the same film as it's a shortcut path in the code
+        # Check we can vote for the same user again (shortcut path in the code)
         self.assertEqual(
             filmbot.cast_preference_vote(
-                DiscordUserID=user_id1, FilmID=film_id2
-            ),
+                DiscordUserID=user_id1, NominatorUserID=user_id2
+            )[0],
             VotingStatus.UNCOMPLETE,
         )
         self.assertEqual(grab_db(self.dynamodb_client), expected)
@@ -1144,60 +1254,60 @@ class TestFilmBot(unittest.TestCase):
         # Check we can change our vote
         self.assertEqual(
             filmbot.cast_preference_vote(
-                DiscordUserID=user_id1, FilmID=film_id3
-            ),
+                DiscordUserID=user_id1, NominatorUserID=user_id3
+            )[0],
             VotingStatus.UNCOMPLETE,
         )
-        expected[guild1][FILM_2]["CastVotes"] -= 1
-        expected[guild1][FILM_3]["CastVotes"] += 1
-        expected[guild1][USER_1]["VoteID"] = film_id3
+        expected[guild1][USER_2]["CastVotes"] -= 1
+        expected[guild1][USER_3]["CastVotes"] += 1
+        expected[guild1][USER_1]["VoteID"] = user_id3
         self.assertEqual(grab_db(self.dynamodb_client), expected)
 
-        # Check we can't vote for our nomination
+        # Check we can't vote for our own nomination
         with self.assertRaises(UserError):
             filmbot.cast_preference_vote(
-                DiscordUserID=user_id1, FilmID=film_id1
+                DiscordUserID=user_id1, NominatorUserID=user_id1
             ),
         self.assertEqual(grab_db(self.dynamodb_client), expected)
 
         # Check that we know when voting is finished
         self.assertEqual(
             filmbot.cast_preference_vote(
-                DiscordUserID=user_id2, FilmID=film_id1
-            ),
+                DiscordUserID=user_id2, NominatorUserID=user_id1
+            )[0],
             VotingStatus.UNCOMPLETE,
         )
-        expected[guild1][FILM_1]["CastVotes"] += 1
-        expected[guild1][USER_2]["VoteID"] = film_id1
+        expected[guild1][USER_1]["CastVotes"] += 1
+        expected[guild1][USER_2]["VoteID"] = user_id1
         self.assertEqual(grab_db(self.dynamodb_client), expected)
 
         self.assertEqual(
             filmbot.cast_preference_vote(
-                DiscordUserID=user_id3, FilmID=film_id1
-            ),
+                DiscordUserID=user_id3, NominatorUserID=user_id1
+            )[0],
             VotingStatus.COMPLETE,
         )
-        expected[guild1][FILM_1]["CastVotes"] += 1
-        expected[guild1][USER_3]["VoteID"] = film_id1
+        expected[guild1][USER_1]["CastVotes"] += 1
+        expected[guild1][USER_3]["VoteID"] = user_id1
         self.assertEqual(grab_db(self.dynamodb_client), expected)
 
         # Check that we can change votes when voting is finished
         self.assertEqual(
             filmbot.cast_preference_vote(
-                DiscordUserID=user_id3, FilmID=film_id2
-            ),
+                DiscordUserID=user_id3, NominatorUserID=user_id2
+            )[0],
             VotingStatus.COMPLETE,
         )
-        expected[guild1][FILM_1]["CastVotes"] -= 1
-        expected[guild1][FILM_2]["CastVotes"] += 1
-        expected[guild1][USER_3]["VoteID"] = film_id2
+        expected[guild1][USER_1]["CastVotes"] -= 1
+        expected[guild1][USER_2]["CastVotes"] += 1
+        expected[guild1][USER_3]["VoteID"] = user_id2
         self.assertEqual(grab_db(self.dynamodb_client), expected)
 
-        # Check we can vote for the same film once voting is finished
+        # Check we can vote for the same user once voting is finished
         self.assertEqual(
             filmbot.cast_preference_vote(
-                DiscordUserID=user_id3, FilmID=film_id2
-            ),
+                DiscordUserID=user_id3, NominatorUserID=user_id2
+            )[0],
             VotingStatus.COMPLETE,
         )
         self.assertEqual(grab_db(self.dynamodb_client), expected)
@@ -1205,19 +1315,10 @@ class TestFilmBot(unittest.TestCase):
         good_time = d + timedelta(hours=24)
         bad_time = good_time - timedelta(seconds=1)
 
-        # Check that we can't watch a film that doesn't exist
+        # Check that we can't watch a film for a non-existent user
         with self.assertRaises(UserError):
             filmbot.start_watching_film(
-                FilmID="non existent",
-                DateTime=good_time,
-                PresentUserIDs=[user_id1],
-            )
-        self.assertEqual(grab_db(self.dynamodb_client), expected)
-
-        # Check that we can't watch a film that has already been watched
-        with self.assertRaises(UserError):
-            filmbot.start_watching_film(
-                FilmID=film_watched,
+                NominatorUserID="non existent",
                 DateTime=good_time,
                 PresentUserIDs=[user_id1],
             )
@@ -1226,7 +1327,9 @@ class TestFilmBot(unittest.TestCase):
         # Check we can't watch another film within 24 hours
         with self.assertRaises(UserError):
             filmbot.start_watching_film(
-                FilmID=film_id1, DateTime=bad_time, PresentUserIDs=[user_id1]
+                NominatorUserID=user_id1,
+                DateTime=bad_time,
+                PresentUserIDs=[user_id1],
             )
         self.assertEqual(grab_db(self.dynamodb_client), expected)
 
@@ -1234,7 +1337,7 @@ class TestFilmBot(unittest.TestCase):
         with snapshot(self.dynamodb_client) as exp:
             self.assertEqual(
                 filmbot.start_watching_film(
-                    FilmID=film_id1,
+                    NominatorUserID=user_id1,
                     DateTime=good_time,
                     PresentUserIDs=[user_id1, user_id2, user_id3],
                 ),
@@ -1251,32 +1354,46 @@ class TestFilmBot(unittest.TestCase):
                 ),
             )
 
-            # Update our users
-            exp[guild1][USER_1]["NominatedFilmID"] = None
+            # User1's film fields removed, VoteID/AttendanceVoteID updated
+            del exp[guild1][USER_1]["FilmID"]
+            del exp[guild1][USER_1]["FilmName"]
+            del exp[guild1][USER_1]["IMDbID"]
+            del exp[guild1][USER_1]["CastVotes"]
+            del exp[guild1][USER_1]["AttendanceVotes"]
+            del exp[guild1][USER_1]["DateNominated"]
             exp[guild1][USER_1]["VoteID"] = None
             exp[guild1][USER_1]["AttendanceVoteID"] = film_id1
+
+            # User2 present, not nominator, has film2 → AttendanceVotes increments
             exp[guild1][USER_2]["VoteID"] = None
             exp[guild1][USER_2]["AttendanceVoteID"] = film_id1
+            exp[guild1][USER_2]["AttendanceVotes"] += 1
+
+            # User3 present, not nominator, has film3 → AttendanceVotes increments
             exp[guild1][USER_3]["VoteID"] = None
             exp[guild1][USER_3]["AttendanceVoteID"] = film_id1
+            exp[guild1][USER_3]["AttendanceVotes"] += 1
 
-            # Update our nomination votes for user2 (user1 nominated the watched
-            # film and user3 has no nomination)
-            exp[guild1][FILM_2]["AttendanceVotes"] += 1
-
-            # Move the film to the `WATCHED` section
-            watched_film = exp[guild1].pop(FILM_1)
-            watched_film["SK"] = (
-                f"FILM#WATCHED#{good_time.isoformat()}#{film_id1}"
+            exp[guild1].append(
+                {
+                    "SK": f"FILM#WATCHED#{good_time.isoformat()}#{film_id1}",
+                    "FilmName": "My Film 1",
+                    "IMDbID": imdb1,
+                    "DiscordUserID": user_id1,
+                    "CastVotes": 1,
+                    "AttendanceVotes": 0,
+                    "UsersAttended": set([user_id1, user_id2, user_id3]),
+                    "DateNominated": d.isoformat(),
+                }
             )
-            watched_film["UsersAttended"] = set([user_id1, user_id2, user_id3])
-            exp[guild1].append(watched_film)
             self.assertEqual(grab_db(self.dynamodb_client), exp)
 
         # Check we can watch a film with just one user
         self.assertEqual(
             filmbot.start_watching_film(
-                FilmID=film_id1, DateTime=good_time, PresentUserIDs=[user_id1]
+                NominatorUserID=user_id1,
+                DateTime=good_time,
+                PresentUserIDs=[user_id1],
             ),
             Film(
                 FilmID=film_id1,
@@ -1291,29 +1408,46 @@ class TestFilmBot(unittest.TestCase):
             ),
         )
 
-        # Update our users
-        expected[guild1][USER_1]["NominatedFilmID"] = None
+        # User1 film fields cleared, present → AttendanceVoteID set
+        del expected[guild1][USER_1]["FilmID"]
+        del expected[guild1][USER_1]["FilmName"]
+        del expected[guild1][USER_1]["IMDbID"]
+        del expected[guild1][USER_1]["CastVotes"]
+        del expected[guild1][USER_1]["AttendanceVotes"]
+        del expected[guild1][USER_1]["DateNominated"]
         expected[guild1][USER_1]["VoteID"] = None
         expected[guild1][USER_1]["AttendanceVoteID"] = film_id1
+        # User2 not present: vote and attendance cleared
         expected[guild1][USER_2]["VoteID"] = None
         expected[guild1][USER_2]["AttendanceVoteID"] = None
+        # User3 not present: vote cleared
         expected[guild1][USER_3]["VoteID"] = None
 
-        # Move the film to the `WATCHED` section
-        watched_film = expected[guild1].pop(FILM_1)
-        watched_film["SK"] = f"FILM#WATCHED#{good_time.isoformat()}#{film_id1}"
-        watched_film["UsersAttended"] = set([user_id1])
-        expected[guild1].append(watched_film)
+        expected[guild1].append(
+            {
+                "SK": f"FILM#WATCHED#{good_time.isoformat()}#{film_id1}",
+                "FilmName": "My Film 1",
+                "IMDbID": imdb1,
+                "DiscordUserID": user_id1,
+                "CastVotes": 1,
+                "AttendanceVotes": 0,
+                "UsersAttended": set([user_id1]),
+                "DateNominated": d.isoformat(),
+            }
+        )
         self.assertEqual(grab_db(self.dynamodb_client), expected)
 
-        # Fixup the indices
+        # After watching: list is now 5 items sorted by SK:
+        # 0: DISCORDUSER#User1 (no film fields)
+        # 1: DISCORDUSER#User2 (has film2)
+        # 2: DISCORDUSER#User3 (has film3)
+        # 3: FILM#WATCHED#{ages_ago}#Super-old-film
+        # 4: FILM#WATCHED#{d}#Film4
+        # 5: FILM#WATCHED#{good_time}#Film1
         USER_1 = 0
         USER_2 = 1
         USER_3 = 2
-        FILM_2 = 3
-        FILM_3 = 4
-        FILM_1 = 7
-        self.assertEqual(grab_db(self.dynamodb_client), expected)
+        FILM_1 = 5
 
         # Check we can't record attendance before the film is watched
         too_early = good_time - timedelta(seconds=1)
@@ -1332,7 +1466,7 @@ class TestFilmBot(unittest.TestCase):
             )
         self.assertEqual(grab_db(self.dynamodb_client), expected)
 
-        # Check we recording attendance for the nominator is a noop
+        # Check that recording attendance for user1 (already marked present) is a noop
         self.assertEqual(
             filmbot.record_attendance_vote(
                 DiscordUserID=user_id1, DateTime=good_time
@@ -1341,8 +1475,7 @@ class TestFilmBot(unittest.TestCase):
         )
         self.assertEqual(grab_db(self.dynamodb_client), expected)
 
-        # Check we can record attendance on the cut off with a user
-        # who has a nominated film
+        # Check we can record attendance on the cutoff with a user who has a film
         just_in_time = good_time + timedelta(hours=4)
         self.assertEqual(
             filmbot.record_attendance_vote(
@@ -1352,10 +1485,10 @@ class TestFilmBot(unittest.TestCase):
         )
         expected[guild1][USER_2]["AttendanceVoteID"] = film_id1
         expected[guild1][FILM_1]["UsersAttended"].add(user_id2)
-        expected[guild1][FILM_2]["AttendanceVotes"] += 1
+        expected[guild1][USER_2]["AttendanceVotes"] += 1
         self.assertEqual(grab_db(self.dynamodb_client), expected)
 
-        # Check we can record attendance for a user with no nominated film
+        # Check we can record attendance for a user who has a nominated film (user3)
         self.assertEqual(
             filmbot.record_attendance_vote(
                 DiscordUserID=user_id3, DateTime=just_in_time
@@ -1364,6 +1497,7 @@ class TestFilmBot(unittest.TestCase):
         )
         expected[guild1][USER_3]["AttendanceVoteID"] = film_id1
         expected[guild1][FILM_1]["UsersAttended"].add(user_id3)
+        expected[guild1][USER_3]["AttendanceVotes"] += 1
         self.assertEqual(grab_db(self.dynamodb_client), expected)
 
     def test_retire_user(self):
@@ -1509,6 +1643,9 @@ class TestFilmBot(unittest.TestCase):
         }
         set_db(self.dynamodb_client, eligible_data)
 
+        # After migration: VoteIDs film_id1 → user_id1 for user2 and user3.
+        # FILM#NOMINATED# records are deleted; film data is embedded in DISCORDUSER#.
+
         # user3: no nomination, no vote, no recent attendance
         self.assertIsNone(filmbot.can_retire(DiscordUserID=user_id3))
         filmbot.retire_user(DiscordUserID=user_id3)
@@ -1517,22 +1654,18 @@ class TestFilmBot(unittest.TestCase):
         self.assertNotIn(f"DISCORDUSER#{user_id3}", user_sks)
         self.assertIn(f"DISCORDUSER#{user_id1}", user_sks)
         self.assertIn(f"DISCORDUSER#{user_id2}", user_sks)
-        self.assertIn(f"FILM#NOMINATED#{film_id1}", user_sks)
-        self.assertIn(f"FILM#NOMINATED#{film_id2}", user_sks)
 
-        # user1: no vote, no one has voted for their film, no recent attendance
-        # Retiring user1 removes their DISCORDUSER# record and their FILM#NOMINATED# record
+        # user1: no vote, no one has voted for their film, no recent attendance.
+        # Retiring user1 removes DISCORDUSER#user1 (which contains their film data).
         self.assertIsNone(filmbot.can_retire(DiscordUserID=user_id1))
         filmbot.retire_user(DiscordUserID=user_id1)
         db = grab_db(self.dynamodb_client)
         user_sks = [r["SK"] for r in db[guild]]
         self.assertNotIn(f"DISCORDUSER#{user_id1}", user_sks)
-        self.assertNotIn(f"FILM#NOMINATED#{film_id1}", user_sks)
         self.assertIn(f"DISCORDUSER#{user_id2}", user_sks)
-        self.assertIn(f"FILM#NOMINATED#{film_id2}", user_sks)
 
         # CastVotes > 0 from a previous round should not block retirement when no
-        # user currently has VoteID pointing at the film.
+        # user currently has VoteID pointing at user2.
         # user2 has CastVotes=3 (leftover from old rounds) but no live voters.
         set_db(
             self.dynamodb_client,
@@ -1572,7 +1705,6 @@ class TestFilmBot(unittest.TestCase):
         db = grab_db(self.dynamodb_client)
         user_sks = [r["SK"] for r in db[guild]]
         self.assertNotIn(f"DISCORDUSER#{user_id2}", user_sks)
-        self.assertNotIn(f"FILM#NOMINATED#{film_id2}", user_sks)
 
 
 if __name__ == "__main__":

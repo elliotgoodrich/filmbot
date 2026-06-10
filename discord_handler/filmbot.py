@@ -7,7 +7,6 @@ TABLE_NAME = "FilmBotTable"
 
 USER_PK = "PK"
 USER_SK = "SK"
-USER_NominatedFilmID = "NominatedFilmID"
 USER_VoteID = "VoteID"
 USER_AttendanceVoteID = "AttendanceVoteID"
 
@@ -28,14 +27,28 @@ class User:
         self,
         *,
         DiscordUserID,
-        NominatedFilmID,
         VoteID,
         AttendanceVoteID,
+        FilmID=None,
+        FilmName=None,
+        IMDbID=None,
+        CastVotes=None,
+        AttendanceVotes=None,
+        DateNominated=None,
     ):
         self.DiscordUserID = DiscordUserID
-        self.NominatedFilmID = NominatedFilmID
         self.VoteID = VoteID
         self.AttendanceVoteID = AttendanceVoteID
+        self.FilmID = FilmID
+        self.FilmName = FilmName
+        self.IMDbID = IMDbID
+        self.CastVotes = CastVotes
+        self.AttendanceVotes = AttendanceVotes
+        self.DateNominated = DateNominated
+
+    @property
+    def has_nomination(self):
+        return self.FilmName is not None
 
     @property
     def SK(self):
@@ -44,30 +57,58 @@ class User:
     def __eq__(self, other):
         return (
             self.DiscordUserID == other.DiscordUserID
-            and self.NominatedFilmID == other.NominatedFilmID
             and self.VoteID == other.VoteID
             and self.AttendanceVoteID == other.AttendanceVoteID
+            and self.FilmID == other.FilmID
+            and self.FilmName == other.FilmName
+            and self.IMDbID == other.IMDbID
+            and self.CastVotes == other.CastVotes
+            and self.AttendanceVotes == other.AttendanceVotes
+            and self.DateNominated == other.DateNominated
         )
 
     def __hash__(self):
         return hash(self.DiscordUserID)
 
     def toDict(self, *, GuildID):
-        return {
+        d = {
             "PK": {"S": GuildID},
             "SK": {"S": self.SK},
-            "NominatedFilmID": keyed(self.NominatedFilmID),
             "VoteID": keyed(self.VoteID),
             "AttendanceVoteID": keyed(self.AttendanceVoteID),
         }
+        if self.has_nomination:
+            d["FilmID"] = {"S": self.FilmID}
+            d["FilmName"] = {"S": self.FilmName}
+            d["IMDbID"] = keyed(self.IMDbID)
+            d["CastVotes"] = {"N": str(self.CastVotes)}
+            d["AttendanceVotes"] = {"N": str(self.AttendanceVotes)}
+            d["DateNominated"] = {"S": datetime.isoformat(self.DateNominated)}
+        return d
 
     @staticmethod
-    def fromDict(dict):
+    def fromDict(item):
+        film_name = unkeyed(item["FilmName"]) if "FilmName" in item else None
         return User(
-            DiscordUserID=dict[USER_SK]["S"].split("#")[-1],
-            NominatedFilmID=unkeyed(dict[USER_NominatedFilmID]),
-            VoteID=unkeyed(dict[USER_VoteID]),
-            AttendanceVoteID=unkeyed(dict[USER_AttendanceVoteID]),
+            DiscordUserID=item[USER_SK]["S"].split("#")[-1],
+            VoteID=unkeyed(item[USER_VoteID]),
+            AttendanceVoteID=unkeyed(item[USER_AttendanceVoteID]),
+            FilmID=unkeyed(item["FilmID"]) if "FilmID" in item else None,
+            FilmName=film_name,
+            IMDbID=unkeyed(item["IMDbID"]) if "IMDbID" in item else None,
+            CastVotes=(
+                unkeyed(item["CastVotes"]) if "CastVotes" in item else None
+            ),
+            AttendanceVotes=(
+                unkeyed(item["AttendanceVotes"])
+                if "AttendanceVotes" in item
+                else None
+            ),
+            DateNominated=(
+                datetime.fromisoformat(unkeyed(item["DateNominated"]))
+                if "DateNominated" in item
+                else None
+            ),
         )
 
 
@@ -259,6 +300,21 @@ class AttendanceStatus(Enum):
     ALREADY_REGISTERED = 1
 
 
+def _user_to_film(user):
+    """Construct a nominated Film object from a User record."""
+    return Film(
+        FilmID=user.FilmID,
+        FilmName=user.FilmName,
+        IMDbID=user.IMDbID,
+        DiscordUserID=user.DiscordUserID,
+        CastVotes=user.CastVotes,
+        AttendanceVotes=user.AttendanceVotes,
+        UsersAttended=None,
+        DateNominated=user.DateNominated,
+        DateWatched=None,
+    )
+
+
 class FilmBot:
     def __init__(self, DynamoDBClient, GuildID):
         self._dynamodb_client = DynamoDBClient
@@ -311,48 +367,16 @@ class FilmBot:
 
         return {user.DiscordUserID: user for user in users}
 
-    def get_nominated_film(self, FilmID):
-        """
-        Return a `Film` object for the nominated film with the specified `FilmID`.
-        Throw an exception if there isn't a nominated film associated with
-        `FilmID`.
-        """
-        response = self.client.get_item(
-            TableName=TABLE_NAME,
-            Key={
-                FILM_PK: {"S": self.guildID},
-                FILM_SK: {"S": f"FILM#NOMINATED#{FilmID}"},
-            },
-        )
-
-        if "Item" not in response:
-            raise UserError(
-                f"There is no nominated film with that ID ({FilmID})"
-            )
-
-        return Film.fromDict(response["Item"])
-
     def get_nominations(self):
         """Return an array of currently nominated films in the order that they should
         be watched based on their vote tally."""
 
-        nominations = map(
-            Film.fromDict,
-            self.__query(
-                {
-                    "TableName": TABLE_NAME,
-                    "ExpressionAttributeValues": {
-                        ":GuildID": {"S": self.guildID},
-                        ":FilmPrefix": {"S": "FILM#NOMINATED#"},
-                    },
-                    "KeyConditionExpression": (
-                        f"{FILM_PK} = :GuildID AND "
-                        f"begins_with({FILM_SK}, :FilmPrefix)"
-                    ),
-                }
-            ),
-        )
-
+        users = self.get_users()
+        nominations = [
+            _user_to_film(user)
+            for user in users.values()
+            if user.has_nomination
+        ]
         return sorted(nominations, key=Film.sortKey)
 
     def get_users_by_nomination(self):
@@ -361,50 +385,17 @@ class FilmBot:
         If a user has not nominated then they will be put at the end of the array.
         """
 
-        # Probably we should be duplicating film data under the user instead of using
-        # NoSQL in a relational way.  But in this case we can grab all users and all
-        # nominations easily and do the mapping ourselves.
-
-        films = {}
-        users = []
-        for result in self.__query(
+        users = self.get_users()
+        result = [
             {
-                "TableName": TABLE_NAME,
-                "ExpressionAttributeValues": {
-                    ":GuildID": {"S": self.guildID},
-                    ":UserPrefix": {"S": "DISCORDUSER#"},
-                    ":FilmPrefix": {"S": "FILM#NOMINATED$"},  # '$' == '#' + 1
-                },
-                "KeyConditionExpression": (
-                    f"{FILM_PK} = :GuildID AND "
-                    f"{FILM_SK} BETWEEN :UserPrefix AND :FilmPrefix"
-                ),
-                "ScanIndexForward": False,  # Backwards so we get films first
+                "User": user,
+                "Film": _user_to_film(user) if user.has_nomination else None,
             }
-        ):
-            sk_parts = result[FILM_SK]["S"].split("#")
-            if sk_parts[0] == "FILM":
-                assert sk_parts[1] == "NOMINATED"
-                films[sk_parts[-1]] = Film.fromDict(result)
-            elif sk_parts[0] == "DISCORDUSER":
-                # At this point we should have populated all the films so we can lookup
-                # `NominatedFilmID` in `films`
-                user = User.fromDict(result)
-                users.append(
-                    {
-                        "User": user,
-                        "Film": (
-                            films[user.NominatedFilmID]
-                            if user.NominatedFilmID is not None
-                            else None
-                        ),
-                    }
-                )
-            else:
-                assert False
+            for user in users.values()
+        ]
 
         return sorted(
-            users,
+            result,
             key=lambda u: (
                 (0, Film.sortKey(u["Film"]))
                 if u["Film"] is not None
@@ -476,23 +467,13 @@ class FilmBot:
         Return an array watched and unwatched films in the order that they were
         nominated.
         """
-        films = map(
-            Film.fromDict,
-            self.__query(
-                {
-                    "TableName": TABLE_NAME,
-                    "ExpressionAttributeValues": {
-                        ":GuildID": {"S": self.guildID},
-                        ":FilmPrefix": {"S": "FILM#"},
-                    },
-                    "KeyConditionExpression": (
-                        f"{FILM_PK} = :GuildID AND "
-                        f"begins_with({FILM_SK}, :FilmPrefix)"
-                    ),
-                }
-            ),
-        )
-
+        users = self.get_users()
+        films = [
+            _user_to_film(user)
+            for user in users.values()
+            if user.has_nomination
+        ]
+        films += self.get_watched_films()
         return sorted(films, key=lambda n: n.DateNominated)
 
     def nominate_film(
@@ -511,19 +492,6 @@ class FilmBot:
         `DiscordUserID` already has a nomination then throw an exception.
         """
 
-        new_film = Film(
-            FilmID=NewFilmID,
-            FilmName=FilmName,
-            IMDbID=IMDbID,
-            DiscordUserID=DiscordUserID,
-            CastVotes=0,
-            AttendanceVotes=0,
-            # Empty string sets are not allowed so we have to use None
-            UsersAttended=None,
-            DateNominated=DateTime,
-            DateWatched=None,
-        )
-
         try:
             self.client.transact_write_items(
                 TransactItems=[
@@ -536,45 +504,44 @@ class FilmBot:
                             },
                             "ExpressionAttributeValues": {
                                 ":NewFilmID": {"S": NewFilmID},
+                                ":FilmName": {"S": FilmName},
+                                ":IMDbID": keyed(IMDbID),
+                                ":Zero": {"N": "0"},
+                                ":DateNominated": {
+                                    "S": datetime.isoformat(DateTime)
+                                },
                                 ":Null": {"NULL": True},
                             },
-                            "ConditionExpression": (
-                                f"attribute_not_exists({USER_SK}) OR "
-                                f"{USER_NominatedFilmID} = :Null"
-                            ),
-                            # Make sure to null out the other fields in case we didn't have a user yet
-                            # These should both be Null at this point as we can only nominate after we
-                            # watch a film and these are cleared
+                            "ConditionExpression": "attribute_not_exists(FilmName)",
+                            # Make sure to null out VoteID and AttendanceVoteID in case we
+                            # didn't have a user yet. These should both be Null at this point
+                            # as we can only nominate after we watch a film and these are cleared.
                             "UpdateExpression": (
-                                f"SET {USER_NominatedFilmID} = :NewFilmID, "
+                                "SET FilmID = :NewFilmID, "
+                                "FilmName = :FilmName, "
+                                "IMDbID = :IMDbID, "
+                                "CastVotes = :Zero, "
+                                "AttendanceVotes = :Zero, "
+                                "DateNominated = :DateNominated, "
                                 f"{USER_VoteID} = :Null, "
                                 f"{USER_AttendanceVoteID} = :Null"
                             ),
                         }
                     },
-                    {
-                        "Put": {
-                            "TableName": TABLE_NAME,
-                            "Item": new_film.toDict(GuildID=self.guildID),
-                            # Make sure we haven't reused this film ID before
-                            "ConditionExpression": f"attribute_not_exists({FILM_SK})",
-                        }
-                    },
                 ]
             )
         except self.client.exceptions.TransactionCanceledException as e:
-            # This can also occur if we pass in a reused FilmID, but that is
-            # impossible if we're using a UUID properly.
             raise UserError(
                 "Unable to nominate a film as you have already nominated one"
             )
 
-    def cast_preference_vote(self, *, DiscordUserID, FilmID):
+    def cast_preference_vote(self, *, DiscordUserID, NominatorUserID):
         """
-        Attempt to cast a vote for `FilmID` by `DiscordUserID` and return
-        whether voting is complete.  Throw an exception if either
-        `DiscordUserID` is not a registered user, FilmID` refers to that
-        user's nominated film, or `FilmID` doesn't point to a nominated film.
+        Attempt to cast a vote for the film nominated by `NominatorUserID` on behalf
+        of `DiscordUserID` and return a tuple of (VotingStatus, Film).  Throw an
+        exception if `DiscordUserID` is not a registered user, `NominatorUserID`
+        refers to that user themselves, or `NominatorUserID` doesn't have an active
+        nomination.
         """
 
         users = self.get_users()
@@ -582,10 +549,12 @@ class FilmBot:
             raise UserError("You can't vote until you have nominated a film")
 
         our_user = users[DiscordUserID]
-        previous_vote = our_user.VoteID
+        previous_vote = (
+            our_user.VoteID
+        )  # NominatorUserID of previously voted film
 
         # Disallow voting for your own nomination
-        if FilmID == our_user.NominatedFilmID:
+        if NominatorUserID == DiscordUserID:
             raise UserError("You can't vote for your own film")
 
         # Record if this is the last user to vote
@@ -594,12 +563,12 @@ class FilmBot:
         our_user_hasnt_voted = our_user.VoteID is None
 
         # Do nothing if user votes for the same thing
-        if previous_vote == FilmID:
+        if previous_vote == NominatorUserID:
             return (
                 VotingStatus.COMPLETE
                 if user_voted_count == len(user_list)
                 else VotingStatus.UNCOMPLETE
-            )
+            ), _user_to_film(users[NominatorUserID])
 
         items = [
             # Change vote-id and make sure it matches the one we previously read
@@ -612,97 +581,115 @@ class FilmBot:
                         USER_SK: {"S": f"DISCORDUSER#{DiscordUserID}"},
                     },
                     "ExpressionAttributeValues": {
-                        ":NewFilmID": {"S": FilmID},
+                        ":NewVoteID": {"S": NominatorUserID},
                         ":PreviousVoteID": keyed(previous_vote),
                     },
                     "ConditionExpression": (
                         f"attribute_exists({USER_SK}) AND "
                         f"{USER_VoteID} = :PreviousVoteID"
                     ),
-                    "UpdateExpression": f"SET {USER_VoteID} = :NewFilmID",
+                    "UpdateExpression": f"SET {USER_VoteID} = :NewVoteID",
                 }
             },
-            # Increment vote count in nominations for new film (also check it exists)
+            # Increment vote count on the nominator's user record (also check they have a nomination)
             {
                 "Update": {
                     "TableName": TABLE_NAME,
                     "Key": {
-                        FILM_PK: {"S": self.guildID},
-                        FILM_SK: {"S": f"FILM#NOMINATED#{FilmID}"},
+                        USER_PK: {"S": self.guildID},
+                        USER_SK: {"S": f"DISCORDUSER#{NominatorUserID}"},
                     },
                     "ExpressionAttributeValues": {
                         ":One": {"N": "1"},
                     },
-                    "ConditionExpression": f"attribute_exists({FILM_SK})",
-                    "UpdateExpression": f"SET {FILM_CastVotes} = {FILM_CastVotes} + :One",
+                    "ConditionExpression": "attribute_exists(FilmName)",
+                    "UpdateExpression": "SET CastVotes = CastVotes + :One",
                 }
             },
         ]
 
         if previous_vote is not None:
-            # Decrement vote count for previous film
+            # Decrement vote count on previous nominator's record
             items.append(
                 {
                     "Update": {
                         "TableName": TABLE_NAME,
                         "Key": {
-                            FILM_PK: {"S": self.guildID},
-                            FILM_SK: {"S": f"FILM#NOMINATED#{previous_vote}"},
+                            USER_PK: {"S": self.guildID},
+                            USER_SK: {"S": f"DISCORDUSER#{previous_vote}"},
                         },
                         "ExpressionAttributeValues": {
                             ":One": {"N": "1"},
                         },
-                        # We don't need a ConditionExpression as we should never be updating
-                        # something that wasn't in the table
-                        "UpdateExpression": f"SET {FILM_CastVotes} = {FILM_CastVotes} - :One",
+                        "ConditionExpression": "attribute_exists(FilmName)",
+                        "UpdateExpression": "SET CastVotes = CastVotes - :One",
                     }
                 }
             )
 
-        # The transaction can also throw if the user votes quickly in
-        # succession so updating our users table fails because the
-        # current film we voted on doesn't match what we previously
-        # extracted.  This is unlikely to occur as the only sensible way
-        # to know the `FilmID` is to use the Discord autocomplete, which
-        # takes time to load.
         try:
             self.client.transact_write_items(TransactItems=items)
-        except self.client.exceptions.TransactionCanceledException:
+        except self.client.exceptions.TransactionCanceledException as e:
+            reasons = e.response.get("CancellationReasons", [])
+            failed = {
+                i
+                for i, r in enumerate(reasons)
+                if r.get("Code") == "ConditionalCheckFailed"
+            }
+            if 0 in failed:
+                raise UserError(
+                    "Your vote could not be recorded due to a conflict, please try again"
+                )
+            if 1 in failed:
+                raise UserError(
+                    f"There is no film nominated by <@{NominatorUserID}>"
+                )
+            if 2 in failed:
+                raise UserError(
+                    "The film you were changing your vote away from has just been watched - please vote again"
+                )
             raise UserError(
-                f"There is no nominated film with that ID ({FilmID})"
+                "Unknown error occurred while recording your vote, please try again"
             )
 
         return (
             VotingStatus.COMPLETE
             if user_voted_count + int(our_user_hasnt_voted) == len(user_list)
             else VotingStatus.UNCOMPLETE
-        )
+        ), _user_to_film(users[NominatorUserID])
 
-    def start_watching_film(self, *, FilmID, PresentUserIDs, DateTime):
+    def start_watching_film(
+        self, *, NominatorUserID, PresentUserIDs, DateTime
+    ):
         """
-        Attempt to record that we're watching the specified `FilmID` and
-        record an attendance vote for each user in the `PresentUserIDs` array
-        and return the a `Film` object.  Also clear out all cast votes
-        from all users and clear out the user's nomination who had previously
-        nominated `FilmID`.  Throw an exception if `FilmID` isn't correct,
-        less than 24 hours has passed since watching the last film, or
-        `PresentUserIDs` is empty.
+        Attempt to record that we're watching the film nominated by `NominatorUserID`
+        and record an attendance vote for each user in the `PresentUserIDs` array
+        and return the a `Film` object.  Also clear out all cast votes from all users
+        and clear the nomination from the user who nominated the film.  Throw an
+        exception if `NominatorUserID` doesn't have an active nomination, less than
+        24 hours has passed since watching the last film, or `PresentUserIDs` is empty.
         """
 
-        # At least one user must be present to start watching a film"
+        # At least one user must be present to start watching a film
         assert PresentUserIDs
 
         response = self.client.get_item(
             TableName=TABLE_NAME,
             Key={
-                FILM_PK: {"S": self.guildID},
-                FILM_SK: {"S": f"FILM#NOMINATED#{FilmID}"},
+                USER_PK: {"S": self.guildID},
+                USER_SK: {"S": f"DISCORDUSER#{NominatorUserID}"},
             },
         )
 
         if "Item" not in response:
             raise UserError(
-                f"There is no nominated film with that ID ({FilmID})"
+                f"There is no film nominated by <@{NominatorUserID}>"
+            )
+
+        nominator_user = User.fromDict(response["Item"])
+        if not nominator_user.has_nomination:
+            raise UserError(
+                f"There is no film nominated by <@{NominatorUserID}>"
             )
 
         # Check to see all user IDs are valid
@@ -710,8 +697,7 @@ class FilmBot:
         for user in PresentUserIDs:
             assert user in all_users
 
-        film = Film.fromDict(response["Item"])
-        nominator_user_id = film.DiscordUserID
+        film = _user_to_film(nominator_user)
 
         # Get the last film watched and see if enough time has passed
         response = self.client.query(
@@ -741,20 +727,55 @@ class FilmBot:
             # Either reset our vote if we aren't present, or set it to
             # the current film ID if we are
             attendance_vote = (
-                {"S": FilmID} if user_id in PresentUserIDs else {"NULL": True}
+                {"S": film.FilmID}
+                if user_id in PresentUserIDs
+                else {"NULL": True}
             )
 
             user = all_users[user_id]
 
-            # Clear our out votes
-            update_exprs = [
+            set_exprs = [
                 f"{USER_VoteID} = :Null",
                 f"{USER_AttendanceVoteID} = :AttendanceVote",
             ]
+            remove_exprs = []
+            add_exprs = []
 
-            # If this was our film, clear our nomination
-            if user_id == nominator_user_id:
-                update_exprs.append(f"{USER_NominatedFilmID} = :Null")
+            if user_id == NominatorUserID:
+                # Clear embedded film fields from the nominator's record
+                remove_exprs += [
+                    "FilmID",
+                    "FilmName",
+                    "IMDbID",
+                    "CastVotes",
+                    "AttendanceVotes",
+                    "DateNominated",
+                ]
+
+            if (
+                user_id in PresentUserIDs
+                and user_id != NominatorUserID
+                and user.has_nomination
+            ):
+                add_exprs.append("AttendanceVotes :One")
+
+            update_expr = "SET " + ", ".join(set_exprs)
+            if remove_exprs:
+                update_expr += " REMOVE " + ", ".join(remove_exprs)
+
+            expr_attr_values = {
+                ":Null": {"NULL": True},
+                ":AttendanceVote": attendance_vote,
+            }
+            if add_exprs:
+                update_expr += " ADD " + ", ".join(add_exprs)
+                expr_attr_values[":One"] = {"N": "1"}
+
+            if user.has_nomination:
+                condition = "FilmID = :PreviousFilmID"
+                expr_attr_values[":PreviousFilmID"] = {"S": user.FilmID}
+            else:
+                condition = "attribute_not_exists(FilmName)"
 
             items.append(
                 {
@@ -764,66 +785,23 @@ class FilmBot:
                             USER_PK: {"S": self.guildID},
                             USER_SK: {"S": f"DISCORDUSER#{user_id}"},
                         },
-                        "ExpressionAttributeValues": {
-                            ":Null": {"NULL": True},
-                            ":PreviousNomination": keyed(user.NominatedFilmID),
-                            ":AttendanceVote": attendance_vote,
-                        },
-                        # We have already checked that the user exists
-                        "ConditionExpression": f"{USER_NominatedFilmID} = :PreviousNomination",
-                        "UpdateExpression": "SET " + ", ".join(update_exprs),
+                        "ExpressionAttributeValues": expr_attr_values,
+                        "ConditionExpression": condition,
+                        "UpdateExpression": update_expr,
                     }
                 }
             )
 
-            # Add an attendance vote for all present users as long
-            # as we weren't the one who nominated the film being
-            # watched and we also have a nominated film
-            if (
-                user_id in PresentUserIDs
-                and user_id != nominator_user_id
-                and user.NominatedFilmID is not None
-            ):
-                items.append(
-                    {
-                        "Update": {
-                            "TableName": TABLE_NAME,
-                            "Key": {
-                                FILM_PK: {"S": self.guildID},
-                                FILM_SK: {
-                                    "S": f"FILM#NOMINATED#{user.NominatedFilmID}"
-                                },
-                            },
-                            "ExpressionAttributeValues": {
-                                ":One": {"N": "1"},
-                            },
-                            "UpdateExpression": f"ADD {FILM_AttendanceVotes} :One",
-                        }
-                    }
-                )
-
         film.DateWatched = DateTime
         film.UsersAttended = set(PresentUserIDs)
-        items += [
-            {
-                "Delete": {
-                    "TableName": TABLE_NAME,
-                    "Key": {
-                        FILM_PK: {"S": self.guildID},
-                        FILM_SK: {"S": f"FILM#NOMINATED#{FilmID}"},
-                    },
-                    # Make sure the film still exists to defend against this
-                    # function being called multiple times in quick succession
-                    "ConditionExpression": f"attribute_exists({FILM_SK})",
-                }
-            },
+        items.append(
             {
                 "Put": {
                     "TableName": TABLE_NAME,
                     "Item": film.toDict(GuildID=self.guildID),
                 },
-            },
-        ]
+            }
+        )
         self.client.transact_write_items(TransactItems=items)
 
         return film
@@ -834,7 +812,7 @@ class FilmBot:
           - ``reason`` is ``None`` when the user is eligible, or a human-readable
             string (suitable for passing to `UserError`) explaining why they are not.
           - ``nominated_film`` is the ``Film`` record for their current nomination, or ``None`` if they
-            have no nomination or the nominated film record no longer exists.
+            have no nomination.
         """
         response = self.client.get_item(
             TableName=TABLE_NAME,
@@ -855,30 +833,18 @@ class FilmBot:
             )
 
         nominated_film = None
-        if user.NominatedFilmID is not None:
-            film_response = self.client.get_item(
-                TableName=TABLE_NAME,
-                Key={
-                    FILM_PK: {"S": self.guildID},
-                    FILM_SK: {"S": f"FILM#NOMINATED#{user.NominatedFilmID}"},
-                },
-            )
-            nominated_film = (
-                Film.fromDict(film_response["Item"])
-                if "Item" in film_response
-                else None
-            )
-            if nominated_film is not None:
-                all_users = self.get_users()
-                for other_user_id, other_user in all_users.items():
-                    if (
-                        other_user_id != DiscordUserID
-                        and other_user.VoteID == user.NominatedFilmID
-                    ):
-                        return (
-                            f"<@{DiscordUserID}> cannot be retired as other users have voted for their film",
-                            None,
-                        )
+        if user.has_nomination:
+            nominated_film = _user_to_film(user)
+            all_users = self.get_users()
+            for other_user_id, other_user in all_users.items():
+                if (
+                    other_user_id != DiscordUserID
+                    and other_user.VoteID == DiscordUserID
+                ):
+                    return (
+                        f"<@{DiscordUserID}> cannot be retired as other users have voted for their film",
+                        None,
+                    )
 
         # Watched film records are immutable once written, so this read is
         # not subject to a race condition.
@@ -923,9 +889,9 @@ class FilmBot:
     def retire_user(self, *, DiscordUserID):
         """
         Attempt to retire the specified `DiscordUserID` by removing their
-        user record and, if they have a nomination, their
-        corresponding nomination record.  Throw an exception if the user is not
-        registered or any of the following hold:
+        user record (which also removes their nomination if they have one).
+        Throw an exception if the user is not registered or any of the
+        following hold:
           - They attended any of the last 5 watched films.
           - They have cast a preference vote.
           - Another user currently has a vote for their nomination.
@@ -936,51 +902,35 @@ class FilmBot:
         if reason is not None:
             raise UserError(reason)
 
-        items = [
-            {
-                "Delete": {
-                    "TableName": TABLE_NAME,
-                    "Key": {
-                        USER_PK: {"S": self.guildID},
-                        USER_SK: {"S": f"DISCORDUSER#{DiscordUserID}"},
-                    },
-                    # Guard against the user casting a vote between our read
-                    # and this commit.
-                    "ConditionExpression": f"{USER_VoteID} = :Null",
-                    "ExpressionAttributeValues": {
-                        ":Null": {"NULL": True},
-                    },
-                }
-            }
-        ]
+        condition = f"{USER_VoteID} = :Null"
+        expr_attr_values = {":Null": {"NULL": True}}
 
         if nominated_film is not None:
-            items.append(
-                {
-                    "Delete": {
-                        "TableName": TABLE_NAME,
-                        "Key": {
-                            FILM_PK: {"S": self.guildID},
-                            FILM_SK: {
-                                "S": f"FILM#NOMINATED#{nominated_film.FilmID}"
-                            },
-                        },
-                        # Guard against any user voting for this film between
-                        # our read and this commit.  Since we have already checked no one
-                        # voted for this film, the only thing that can change this value
-                        # is someone voting for it.
-                        "ConditionExpression": f"{FILM_CastVotes} = :ReadCastVotes",
-                        "ExpressionAttributeValues": {
-                            ":ReadCastVotes": {
-                                "N": str(nominated_film.CastVotes)
-                            },
-                        },
-                    }
-                }
-            )
+            # Guard against any user voting for this film between our read
+            # and this commit. Since we have already checked no one voted
+            # for this film, the only thing that can change CastVotes is
+            # someone voting for it.
+            condition += " AND CastVotes = :ReadCastVotes"
+            expr_attr_values[":ReadCastVotes"] = {
+                "N": str(nominated_film.CastVotes)
+            }
 
         try:
-            self.client.transact_write_items(TransactItems=items)
+            self.client.transact_write_items(
+                TransactItems=[
+                    {
+                        "Delete": {
+                            "TableName": TABLE_NAME,
+                            "Key": {
+                                USER_PK: {"S": self.guildID},
+                                USER_SK: {"S": f"DISCORDUSER#{DiscordUserID}"},
+                            },
+                            "ConditionExpression": condition,
+                            "ExpressionAttributeValues": expr_attr_values,
+                        }
+                    }
+                ]
+            )
         except self.client.exceptions.TransactionCanceledException:
             raise UserError(
                 f"Unable to retire <@{DiscordUserID}>. Please try again."
@@ -1047,22 +997,39 @@ class FilmBot:
                 f"The cutoff for registering attendance was {end_time}"
             )
 
+        # Build the update expression for the user's record, optionally
+        # incrementing their nomination's AttendanceVotes in the same write.
+        update_expr = f"SET {USER_AttendanceVoteID} = :AttendanceVote"
+        expr_attr_values = {
+            ":Null": {"NULL": True},
+            ":AttendanceVote": {"S": latest_watched_film.FilmID},
+        }
+
+        # Add an attendance vote if we weren't the user who nominated the film
+        # and we have a nomination.  We must check both as we could either nominate
+        # straight after we start watching our film or we could have failed to nominate
+        # a new film before a second film has started being watched.
+        if (
+            latest_watched_film.DiscordUserID != user.DiscordUserID
+            and user.has_nomination
+        ):
+            update_expr += " ADD AttendanceVotes :One"
+            expr_attr_values[":One"] = {"N": "1"}
+
         items = [
             {
-                # Record that the user has an attendance vote
+                # Record that the user has an attendance vote, and optionally
+                # increment their film's attendance votes.
                 "Update": {
                     "TableName": TABLE_NAME,
                     "Key": {
                         USER_PK: {"S": self.guildID},
                         USER_SK: {"S": user.SK},
                     },
-                    "ExpressionAttributeValues": {
-                        ":Null": {"NULL": True},
-                        ":AttendanceVote": {"S": latest_watched_film.FilmID},
-                    },
+                    "ExpressionAttributeValues": expr_attr_values,
                     # Check that we haven't recorded an attendance in the meantime
                     "ConditionExpression": f"{USER_AttendanceVoteID} = :Null",
-                    "UpdateExpression": f"SET {USER_AttendanceVoteID} = :AttendanceVote",
+                    "UpdateExpression": update_expr,
                 }
             },
             {
@@ -1081,30 +1048,5 @@ class FilmBot:
             },
         ]
 
-        # Add an attendance vote if we weren't the user who nominated the film
-        # and we have a nomination.  We must check both as we could either nominate
-        # straight after we start watching our film or we could have failed to nominate
-        # a new film before a second film has started being watched
-        if (
-            latest_watched_film.DiscordUserID != user.DiscordUserID
-            and user.NominatedFilmID is not None
-        ):
-            items.append(
-                {
-                    "Update": {
-                        "TableName": TABLE_NAME,
-                        "Key": {
-                            FILM_PK: {"S": self.guildID},
-                            FILM_SK: {
-                                "S": f"FILM#NOMINATED#{user.NominatedFilmID}"
-                            },
-                        },
-                        "ExpressionAttributeValues": {
-                            ":One": {"N": "1"},
-                        },
-                        "UpdateExpression": f"ADD {FILM_AttendanceVotes} :One",
-                    }
-                }
-            )
         self.client.transact_write_items(TransactItems=items)
         return AttendanceStatus.REGISTERED
