@@ -5,7 +5,7 @@
   1. `cd discord_handler`
   2. `pip install -r dev_requirements.txt`
   3. `pip install -r requirements.txt`
-  4. `python test_filmbot.py`
+  4. `python -m unittest discover -v`
 
 ## Formatting
 
