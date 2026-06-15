@@ -47,3 +47,13 @@ jobs:
           aws lambda update-function-code \
             --function-name ${{ secrets.AWS_LAMBDA_FUNCTION_NAME }} \
             --zip-file fileb://deployment.zip
+
+      - name: Install sync dependencies
+        run: pip install -r sync_application_commands/requirements.txt
+
+      - name: Sync Discord application commands
+        run: |
+          python sync_application_commands/sync_application_commands.py \
+            --application_id ${{ vars.DISCORD_APPLICATION_ID }} \
+            --bot_token ${{ secrets.DISCORD_BOT_TOKEN }} \
+            --commands sync_application_commands/commands.json

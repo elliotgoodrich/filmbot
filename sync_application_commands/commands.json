@@ -1,0 +1,72 @@
+[
+  {
+    "name": "vote",
+    "type": 1,
+    "description": "Cast your vote for the next film to watch",
+    "options": [
+      {
+        "name": "film",
+        "description": "The film you want to vote for",
+        "type": 3,
+        "required": true,
+        "autocomplete": true
+      }
+    ]
+  },
+  {
+    "name": "nominate",
+    "type": 1,
+    "description": "Nominate your next film",
+    "options": [
+      {
+        "name": "film",
+        "description": "The name of the film you would like to nominate",
+        "type": 3,
+        "required": true,
+        "autocomplete": true
+      }
+    ]
+  },
+  {
+    "name": "peek",
+    "type": 1,
+    "description": "Display the current set of nominations and current voting status"
+  },
+  {
+    "name": "watch",
+    "type": 1,
+    "description": "Indicate that the specified film is being watched and take attendance",
+    "options": [
+      {
+        "name": "film",
+        "description": "The film currently being watched",
+        "type": 3,
+        "required": true,
+        "autocomplete": true
+      }
+    ]
+  },
+  {
+    "name": "here",
+    "type": 1,
+    "description": "Register attendance for the film currently being watched"
+  },
+  {
+    "name": "history",
+    "type": 1,
+    "description": "Display the films that have previously been watched"
+  },
+  {
+    "name": "retire",
+    "type": 1,
+    "description": "Retire a user who has been inactive",
+    "options": [
+      {
+        "name": "user",
+        "description": "The user to retire",
+        "type": 6,
+        "required": true
+      }
+    ]
+  }
+]
