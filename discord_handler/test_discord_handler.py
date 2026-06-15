@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch, MagicMock
 import boto3
 from moto import mock_dynamodb
 from discord_handler import (
@@ -234,38 +235,41 @@ class TestDiscordHandler(unittest.TestCase):
             },
         )
 
-        self.assertEqual(
-            handle_discord(
-                {
-                    "body-json": {
-                        "type": DiscordRequest.APPLICATION_COMMAND,
-                        "data": {
-                            "name": "nominate",
-                            "options": [
-                                {"value": "IMDB:012345:My Other Film"}
-                            ],
-                        },
-                        "guild_id": "123",
-                        "member": {
-                            "user": {
-                                "id": "def",
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"imdb_id": "tt012345"}
+        with patch("discord_handler.requests.get", return_value=mock_response):
+            self.assertEqual(
+                handle_discord(
+                    {
+                        "body-json": {
+                            "type": DiscordRequest.APPLICATION_COMMAND,
+                            "data": {
+                                "name": "nominate",
+                                "options": [
+                                    {"value": "TMDB:123456:My Other Film"}
+                                ],
                             },
-                        },
-                    }
+                            "guild_id": "123",
+                            "member": {
+                                "user": {
+                                    "id": "def",
+                                },
+                            },
+                        }
+                    },
+                    self.dynamodb_client,
+                ),
+                {
+                    "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
+                    "data": {
+                        "content": "<@def> has successfully nominated My Other Film.\n"
+                        + "\n"
+                        + "The current list of nominations are:\n"
+                        + "1. <@abc> My Film Name (0 votes)\n"
+                        + "2. <@def> My Other Film (0 votes) [IMDB](<https://imdb.com/title/tt012345>)",
+                    },
                 },
-                self.dynamodb_client,
-            ),
-            {
-                "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
-                "data": {
-                    "content": "<@def> has successfully nominated My Other Film.\n"
-                    + "\n"
-                    + "The current list of nominations are:\n"
-                    + "1. <@abc> My Film Name (0 votes)\n"
-                    + "2. <@def> My Other Film (0 votes) [IMDB](<https://imdb.com/title/tt012345>)",
-                },
-            },
-        )
+            )
 
         # /peek
         self.assertEqual(
