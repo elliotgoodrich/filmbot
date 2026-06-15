@@ -1,9 +1,9 @@
 from filmbot import FilmBot, VotingStatus, AttendanceStatus, Film
 from UserError import UserError
 import datetime as dt
-from itertools import islice
+import os
+import requests
 from uuid import uuid1
-from imdb import IMDb
 
 MAX_MESSAGE_SIZE = 2000
 
@@ -69,16 +69,27 @@ def films_to_choices(films):
     )
 
 
-def encode_IMDB(imdb_id, film_name):
-    return f"IMDB:{imdb_id}:{film_name}"
+def _tmdb_headers():
+    return {"Authorization": f"Bearer {os.environ.get('TMDB_TOKEN')}"}
+
+
+def encode_TMDB(tmdb_id, film_name_with_year):
+    return f"TMDB:{tmdb_id}:{film_name_with_year}"
 
 
 def decode_film(film_name_or_id):
-    if film_name_or_id.startswith("IMDB:"):
-        parts = film_name_or_id.split(":", 3)
-        assert parts[0] == "IMDB"
-        imdb_id = parts[1]
-        film_name = parts[2]
+    if film_name_or_id.startswith("TMDB:"):
+        _, tmdb_id, film_name = film_name_or_id.split(":", 2)
+        try:
+            r = requests.get(
+                f"https://api.themoviedb.org/3/movie/{tmdb_id}/external_ids",
+                headers=_tmdb_headers(),
+            )
+            r.raise_for_status()
+            raw_imdb_id = r.json().get("imdb_id")
+            imdb_id = raw_imdb_id[2:] if raw_imdb_id else None
+        except Exception:
+            imdb_id = None
         return film_name, imdb_id
     else:
         return film_name_or_id, None
@@ -403,32 +414,28 @@ def handle_autocomplete(event, client):
     command = body["data"]["name"]
     guild_id = body["guild_id"]
     if command == "nominate":
-        ia = IMDb()
-
         partial_film_name = body["data"]["options"][0]["value"]
-
-        # Get 2x the number of results we expect as `search_movie` also
-        # finds TV shows etc. and we will trim it down to `MAX_RESULTS`
-        # afterwards.
         MAX_RESULTS = 5
-        results = ia.search_movie(partial_film_name, results=MAX_RESULTS * 2)
+        r = requests.get(
+            "https://api.themoviedb.org/3/search/movie",
+            headers=_tmdb_headers(),
+            params={"query": partial_film_name},
+        )
+        r.raise_for_status()
+        results = r.json()["results"][:MAX_RESULTS]
         return {
             "type": DiscordResponse.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT,
             "data": {
-                "choices": list(
-                    map(
-                        lambda r: {
-                            "name": f"{r['title']} ({r['year']})",
-                            "value": encode_IMDB(
-                                r.movieID, f"{r['title']} ({r['year']})"
-                            ),
-                        },
-                        islice(
-                            filter(lambda r: r["kind"] == "movie", results),
-                            MAX_RESULTS,
+                "choices": [
+                    {
+                        "name": f"{m['title']} ({m.get('release_date', '')[:4]})",
+                        "value": encode_TMDB(
+                            m["id"],
+                            f"{m['title']} ({m.get('release_date', '')[:4]})",
                         ),
-                    )
-                )
+                    }
+                    for m in results
+                ]
             },
         }
 
