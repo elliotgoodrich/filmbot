@@ -544,6 +544,19 @@ def handle_discord(event, client):
     type = body["type"]
     if type == DiscordRequest.PING:
         return {"type": DiscordResponse.PONG}
+    if os.environ.get("MAINTENANCE_MODE"):
+        if type == DiscordRequest.APPLICATION_COMMAND_AUTOCOMPLETE:
+            return {
+                "type": DiscordResponse.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT,
+                "data": {"choices": []},
+            }
+        return {
+            "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
+            "data": {
+                "content": "The bot is currently under maintenance. Please try again later.",
+                "flags": DiscordFlag.EPHEMERAL_FLAG,
+            },
+        }
     elif type == DiscordRequest.APPLICATION_COMMAND:
         try:
             return handle_application_command(event, client)
