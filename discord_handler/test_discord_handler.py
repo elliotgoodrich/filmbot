@@ -1,3 +1,4 @@
+import os
 import unittest
 from unittest.mock import patch, MagicMock
 import boto3
@@ -111,6 +112,97 @@ class TestDiscordHandler(unittest.TestCase):
             handle_discord({"body-json": {"type": DiscordRequest.PING}}, None),
             {"type": DiscordResponse.PONG},
         )
+
+    def test_maintenance_mode(self):
+        maintenance_message = {
+            "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
+            "data": {
+                "content": "The bot is currently under maintenance. Please try again later.",
+                "flags": DiscordFlag.EPHEMERAL_FLAG,
+            },
+        }
+
+        with patch.dict(os.environ, {"MAINTENANCE_MODE": "1"}):
+            # PING still responds normally
+            self.assertEqual(
+                handle_discord(
+                    {"body-json": {"type": DiscordRequest.PING}}, None
+                ),
+                {"type": DiscordResponse.PONG},
+            )
+            # APPLICATION_COMMAND returns maintenance message
+            self.assertEqual(
+                handle_discord(
+                    {
+                        "body-json": {
+                            "type": DiscordRequest.APPLICATION_COMMAND,
+                            "data": {"name": "peek"},
+                            "guild_id": "123",
+                            "member": {"user": {"id": "abc"}},
+                        }
+                    },
+                    None,
+                ),
+                maintenance_message,
+            )
+            # MESSAGE_COMPONENT returns maintenance message
+            self.assertEqual(
+                handle_discord(
+                    {
+                        "body-json": {
+                            "type": DiscordRequest.MESSAGE_COMPONENT,
+                            "data": {
+                                "component_type": DiscordMessageComponent.BUTTON,
+                                "custom_id": MessageComponentID.SHAME,
+                            },
+                            "guild_id": "123",
+                        }
+                    },
+                    None,
+                ),
+                maintenance_message,
+            )
+            # APPLICATION_COMMAND_AUTOCOMPLETE returns empty choices
+            self.assertEqual(
+                handle_discord(
+                    {
+                        "body-json": {
+                            "type": DiscordRequest.APPLICATION_COMMAND_AUTOCOMPLETE,
+                            "data": {"name": "vote"},
+                            "guild_id": "123",
+                            "member": {"user": {"id": "abc"}},
+                        }
+                    },
+                    None,
+                ),
+                {
+                    "type": DiscordResponse.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT,
+                    "data": {"choices": []},
+                },
+            )
+
+        # Empty string does not trigger maintenance mode
+        with patch.dict(os.environ, {"MAINTENANCE_MODE": ""}, clear=False):
+            self.assertEqual(
+                handle_discord(
+                    {
+                        "body-json": {
+                            "type": DiscordRequest.APPLICATION_COMMAND,
+                            "data": {"name": "peek"},
+                            "guild_id": "123",
+                            "member": {"user": {"id": "abc"}},
+                        }
+                    },
+                    self.dynamodb_client,
+                ),
+                {
+                    "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
+                    "data": {
+                        "content": "There are no current nominations. Each user can nominate with the `/nominate` command.",
+                        "flags": DiscordFlag.EPHEMERAL_FLAG,
+                    },
+                },
+            )
 
     def test_workflow(self):
         # 1. Check /peek and /history with an empty DB
