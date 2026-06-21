@@ -568,7 +568,8 @@ class TestDiscordHandler(unittest.TestCase):
                 "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
                 "data": {
                     "content": "Started watching My Film Name!\n\n"
-                    + "Everyone other than <@def> should record their attendance below or using `/here`.\n\n"
+                    + "Recorded attendance for: <@def>\n\n"
+                    + "Anyone else should record their attendance below or using `/here`.\n\n"
                     + "<@abc> can now nominated their next suggestion with `/nominate`.\n",
                     "components": [
                         {

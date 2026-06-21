@@ -73,6 +73,39 @@ def _tmdb_headers():
     return {"Authorization": f"Bearer {os.environ.get('TMDB_TOKEN')}"}
 
 
+def _discord_headers():
+    return {"Authorization": f"Bot {os.environ.get('DISCORD_BOT_TOKEN')}"}
+
+
+def _get_voice_channel_member_ids(guild_id, user_id):
+    """Return IDs of all users in the same voice channel as user_id, or None if not in one or on error."""
+    try:
+        DISCORD_API = "https://discord.com/api/v10"
+        r = requests.get(
+            f"{DISCORD_API}/guilds/{guild_id}/voice-states",
+            headers=_discord_headers(),
+        )
+        r.raise_for_status()
+        voice_states = r.json()
+        channel_id = next(
+            (
+                vs["channel_id"]
+                for vs in voice_states
+                if vs.get("user_id") == user_id
+            ),
+            None,
+        )
+        if channel_id is None:
+            return None
+        return [
+            vs["user_id"]
+            for vs in voice_states
+            if vs.get("channel_id") == channel_id
+        ]
+    except Exception:
+        return None
+
+
 def encode_TMDB(tmdb_id, film_name_with_year):
     return f"TMDB:{tmdb_id}:{film_name_with_year}"
 
@@ -325,17 +358,23 @@ def handle_application_command(event, client):
 
     elif command == "watch":
         nominator_id = body["data"]["options"][0]["value"]
-        film = filmbot.start_watching_film(
+        voice_user_ids = _get_voice_channel_member_ids(guild_id, user_id)
+        present_user_ids = (
+            voice_user_ids if voice_user_ids is not None else [user_id]
+        )
+        film, recorded_user_ids = filmbot.start_watching_film(
             NominatorUserID=nominator_id,
             DateTime=now,
-            PresentUserIDs=[user_id],
+            PresentUserIDs=present_user_ids,
         )
+        recorded_mentions = " ".join(f"<@{uid}>" for uid in recorded_user_ids)
         return {
             "type": DiscordResponse.CHANNEL_MESSAGE_WITH_SOURCE,
             "data": {
                 "content": (
                     f"Started watching {film.FilmName}!\n\n"
-                    + f"Everyone other than <@{user_id}> should record their attendance below or using `/here`.\n\n"
+                    + f"Recorded attendance for: {recorded_mentions}\n\n"
+                    + f"Anyone else should record their attendance below or using `/here`.\n\n"
                     + f"<@{film.DiscordUserID}> can now nominated their next suggestion with `/nominate`.\n"
                 ),
                 "components": [

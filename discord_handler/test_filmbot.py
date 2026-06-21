@@ -1335,12 +1335,13 @@ class TestFilmBot(unittest.TestCase):
 
         # Check we can watch a film with multiple users initially present
         with snapshot(self.dynamodb_client) as exp:
+            film, recorded = filmbot.start_watching_film(
+                NominatorUserID=user_id1,
+                DateTime=good_time,
+                PresentUserIDs=[user_id1, user_id2, user_id3],
+            )
             self.assertEqual(
-                filmbot.start_watching_film(
-                    NominatorUserID=user_id1,
-                    DateTime=good_time,
-                    PresentUserIDs=[user_id1, user_id2, user_id3],
-                ),
+                film,
                 Film(
                     FilmID=film_id1,
                     FilmName="My Film 1",
@@ -1353,6 +1354,7 @@ class TestFilmBot(unittest.TestCase):
                     DateWatched=good_time,
                 ),
             )
+            self.assertEqual(set(recorded), {user_id1, user_id2, user_id3})
 
             # User1's film fields removed, VoteID/AttendanceVoteID updated
             del exp[guild1][USER_1]["FilmID"]
@@ -1389,12 +1391,13 @@ class TestFilmBot(unittest.TestCase):
             self.assertEqual(grab_db(self.dynamodb_client), exp)
 
         # Check we can watch a film with just one user
+        film, recorded = filmbot.start_watching_film(
+            NominatorUserID=user_id1,
+            DateTime=good_time,
+            PresentUserIDs=[user_id1],
+        )
         self.assertEqual(
-            filmbot.start_watching_film(
-                NominatorUserID=user_id1,
-                DateTime=good_time,
-                PresentUserIDs=[user_id1],
-            ),
+            film,
             Film(
                 FilmID=film_id1,
                 FilmName="My Film 1",
@@ -1407,6 +1410,7 @@ class TestFilmBot(unittest.TestCase):
                 DateWatched=good_time,
             ),
         )
+        self.assertEqual(recorded, [user_id1])
 
         # User1 film fields cleared, present → AttendanceVoteID set
         del expected[guild1][USER_1]["FilmID"]
