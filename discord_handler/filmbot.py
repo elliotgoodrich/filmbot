@@ -663,11 +663,13 @@ class FilmBot:
     ):
         """
         Attempt to record that we're watching the film nominated by `NominatorUserID`
-        and record an attendance vote for each user in the `PresentUserIDs` array
-        and return the a `Film` object.  Also clear out all cast votes from all users
-        and clear the nomination from the user who nominated the film.  Throw an
-        exception if `NominatorUserID` doesn't have an active nomination, less than
-        24 hours has passed since watching the last film, or `PresentUserIDs` is empty.
+        and record an attendance vote for each user in the `PresentUserIDs` array.
+        Returns a `(Film, list[DiscordUserID])` tuple where the second element is the
+        subset of `PresentUserIDs` that had existing records and were actually updated.
+        Also clears out all cast votes from all users and clears the nomination from the
+        user who nominated the film.  Throws an exception if `NominatorUserID` doesn't
+        have an active nomination, less than 24 hours has passed since watching the last
+        film, or `PresentUserIDs` is empty.
         """
 
         # At least one user must be present to start watching a film
@@ -692,10 +694,8 @@ class FilmBot:
                 f"There is no film nominated by <@{NominatorUserID}>"
             )
 
-        # Check to see all user IDs are valid
         all_users = self.get_users()
-        for user in PresentUserIDs:
-            assert user in all_users
+        PresentUserIDs = [uid for uid in PresentUserIDs if uid in all_users]
 
         film = _user_to_film(nominator_user)
 
@@ -775,7 +775,9 @@ class FilmBot:
                 condition = "FilmID = :PreviousFilmID"
                 expr_attr_values[":PreviousFilmID"] = {"S": user.FilmID}
             else:
-                condition = "attribute_not_exists(FilmName)"
+                condition = (
+                    "attribute_exists(SK) AND attribute_not_exists(FilmName)"
+                )
 
             items.append(
                 {
@@ -804,7 +806,7 @@ class FilmBot:
         )
         self.client.transact_write_items(TransactItems=items)
 
-        return film
+        return film, PresentUserIDs
 
     def _check_retire(self, *, DiscordUserID):
         """
@@ -1027,8 +1029,8 @@ class FilmBot:
                         USER_SK: {"S": user.SK},
                     },
                     "ExpressionAttributeValues": expr_attr_values,
-                    # Check that we haven't recorded an attendance in the meantime
-                    "ConditionExpression": f"{USER_AttendanceVoteID} = :Null",
+                    # Check that the user record still exists and we haven't recorded an attendance in the meantime
+                    "ConditionExpression": f"attribute_exists(SK) AND {USER_AttendanceVoteID} = :Null",
                     "UpdateExpression": update_expr,
                 }
             },
