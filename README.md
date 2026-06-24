@@ -1,3 +1,6 @@
+[![Deploy](https://github.com/elliotgoodrich/filmbot/actions/workflows/deploy.yml/badge.svg)](https://github.com/elliotgoodrich/filmbot/actions/workflows/deploy.yml)
+[![Test](https://github.com/elliotgoodrich/filmbot/actions/workflows/test.yml/badge.svg)](https://github.com/elliotgoodrich/filmbot/actions/workflows/test.yml)
+
 # FilmBot
 
 A Discord bot for running a film club. Members nominate films, vote on what to watch next, and record their attendance - all from within Discord.
