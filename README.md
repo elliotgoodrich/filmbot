@@ -1,55 +1,58 @@
-# A FilmBot for Discord
+# FilmBot
 
-Discord Bot to manage our Film Club.
+A Discord bot for running a film club. Members nominate films, vote on what to watch next, and record their attendance - all from within Discord.
 
-## Scripts
+## How it works
 
-There are 2 separate scripts:
-  * [`register_application_commands.py`](register_application_commands/register_application_commands.py) needs to be run any time the [Discord application commands](https://discord.com/developers/docs/interactions/application-commands) changes
-  * [`lambda_function.py`](discord_handler/lambda_function.py) is run any time an application command is run
+1. All members who haven't nominated a film can do so with `/nominate`
+2. Everyone votes for their favourite nomination with `/vote`
+3. A film is watched by the group and recorded using `/watch`
+4. Member's attendence is automatically recorded; latecomers can register with `/here`.
+5. The cycle repeats
 
-## Table Schema
+Use `/peek` at any time to see the current standings and who still needs to nominate or vote.
 
-There is one DynamoDB table needed by FilmBot called "filmbot-table".  It has a partition key 
-called "PK" and a sort key called "SK".
+## Nominations
 
-The partition key will be Discord Guild ID.
+Each member can have one active nomination at a time. Use `/nominate <film>` to nominate — the bot searches [The Movie Database](https://www.themoviedb.org/) as you type and links to the IMDb page where available. Once your film has been watched, you can nominate again immediately.
 
-The sort key will take one of the following forms:
-  1. `"DISCORDUSER#" + DiscordUserID`
-  2. `"FILM#WATCHED#" + DateTimeStarted + "#" + FilmID`
+## Voting
 
-Where:
-  * `DiscordUserID` is the user's Discord ID (supplied by Discord)
-  * `FilmID` is a UUID that we generate per film
-  * `DateTimeStarted` is an ISO 8601 formatted string of the UTC datetime that
-     film was started being watched
+Use `/vote <film>` to cast your preference vote for another member's nomination. You cannot vote for your own film. You can change your vote at any time before watching starts. Once every member has voted, the full rankings are displayed.
 
-For example:
-  1. `"DISCORDUSER#16393729388392"`
-  2. `"FILM#WATCHED#2022-01-19T21:35:58.000000#76988c8a-a15d-48a9-8805-5c7f1723e298"`
+### How films are ranked
 
-### "DISCORDUSER#*" Record Format
+Films are ranked by their **total votes**, which is the sum of two components:
 
-The records with sort key starting with `"DISCORDUSER#"` contain the following fields:
-  * `VoteID` is a string matching another user's `DiscordUserID` that represents the user this person has voted for, or `NULL` if this user has not voted yet in this round
-  * `AttendanceVoteID` is a string matching a `FilmID` that represents the last film this user recorded attendance for, or `NULL` if this user has not recorded attendance for the latest watched film
+- **Preference votes** - the cumulative votes cast by members across all rounds for this film
+- **Attendance votes** - a member gains one attendance vote on their current nomination each time they attend a film that someone else nominated
 
-When a user has an active nomination, the following additional fields are present:
-  * `FilmID` is a UUID identifying the nominated film (also used as part of the `"FILM#WATCHED#"` sort key when the film is later watched)
-  * `FilmName` is a string representation of the film's name
-  * `IMDbID` is `NULL` or an IMDb ID (e.g. `"0113375"`)
-  * `CastVotes` is a non-negative integer representing the number of preference votes cast for this film
-  * `AttendanceVotes` is a non-negative integer representing the number of attendance votes accumulated by this user's nominations over time
-  * `DateNominated` is an ISO 8601 formatted string of the UTC datetime this film was nominated
+Ties are broken first by preference votes alone, then by earliest nomination date.
 
-### "FILM#WATCHED#*" Record Format
+Preference votes and attendance votes do not reset between rounds. Nominations of members who regularly show up will eventually rise to the top even if no one votes for them.
 
-The records with sort key starting with `"FILM#WATCHED#"` contain the following fields:
-  * `FilmName` is a string representation of the film's name
-  * `DiscordUserID` is the Discord ID of the user who nominated this film
-  * `IMDbID` is `NULL` or an IMDb ID (e.g. `"0113375"`)
-  * `CastVotes` is a non-negative integer representing the number of preference votes the film received
-  * `AttendanceVotes` is a non-negative integer representing the number of attendance votes for the user who nominated this film
-  * `UsersAttended` is `NULL` or a non-empty set of Discord user IDs of those who attended (DynamoDB does not support empty string sets)
-  * `DateNominated` is an ISO 8601 formatted string of the UTC datetime this film was nominated
+## Watching a film
+
+Use `/watch <film>` to start watching a film. This does not need to be the top ranked film (perhaps you skip a film due to the nominee's absense).  All members in the same voice channel as the member who types `/watch` will have their attendence recorded. Latecomers can record their attendence by typing `/here` within 4 hours of starting a film.
+
+There is a 24-hour cooldown between films.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `/nominate <film>` | Nominate a film (one active nomination per member) |
+| `/vote <film>` | Vote for another member's nomination |
+| `/peek` | View current nominations, vote counts, and who still needs to act |
+| `/watch <film>` | Start watching the selected film |
+| `/here` | Register your attendance for the current film |
+| `/history` | Browse previously watched films |
+| `/retire <user>` | Remove an inactive member who hasn't attended the last 5 films |
+
+## Installation
+
+This bot is not public, but if you would like to have this bot on your Discord server, please open an [issue](https://github.com/elliotgoodrich/filmbot/issues/new) with a way to contact yourself.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
