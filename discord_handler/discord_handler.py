@@ -464,6 +464,12 @@ def handle_autocomplete(event, client):
         )
         r.raise_for_status()
         results = r.json()["results"][:MAX_RESULTS]
+        title_order = {}
+        for m in results:
+            title_order.setdefault(m["title"], len(title_order))
+        results.sort(
+            key=lambda m: (title_order[m["title"]], -m.get("vote_count", 0))
+        )
         return {
             "type": DiscordResponse.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT,
             "data": {
