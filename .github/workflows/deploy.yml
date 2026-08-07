@@ -13,13 +13,22 @@ permissions:
 
 jobs:
   deploy:
-    if: github.event.workflow_run.conclusion == 'success'
+    # Only deploy when the triggering Test run succeeded AND originated from the
+    # base repository's own main branch. Verifying head_repository prevents a
+    # fork PR whose branch is named "main" from triggering a privileged deploy.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          # Do not persist GITHUB_TOKEN in the git config; no later step needs it.
+          persist-credentials: false
 
       - name: Build deployment package
         run: |
