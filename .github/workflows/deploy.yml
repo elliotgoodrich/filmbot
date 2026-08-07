@@ -8,6 +8,9 @@ on:
     types:
       - completed
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     if: github.event.workflow_run.conclusion == 'success'
@@ -16,7 +19,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Build deployment package
         run: |
@@ -32,21 +35,23 @@ jobs:
           cd package && zip -r ../deployment.zip .
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v6
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Deploy to AWS Lambda
+        env:
+          AWS_LAMBDA_FUNCTION_NAME: ${{ secrets.AWS_LAMBDA_FUNCTION_NAME }}
         run: |
           aws lambda update-function-code \
-            --function-name ${{ secrets.AWS_LAMBDA_FUNCTION_NAME }} \
+            --function-name "$AWS_LAMBDA_FUNCTION_NAME" \
             --zip-file fileb://deployment.zip \
             --query '{CodeSha256: CodeSha256, CodeSize: CodeSize, LastModified: LastModified, State: State, LastUpdateStatus: LastUpdateStatus}' \
             --output table
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -56,8 +61,11 @@ jobs:
         run: pip install -r sync_application_commands/requirements.txt
 
       - name: Sync Discord application commands
+        env:
+          DISCORD_APPLICATION_ID: ${{ vars.DISCORD_APPLICATION_ID }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
         run: |
           python sync_application_commands/sync_application_commands.py \
-            --application_id ${{ vars.DISCORD_APPLICATION_ID }} \
-            --bot_token ${{ secrets.DISCORD_BOT_TOKEN }} \
+            --application_id "$DISCORD_APPLICATION_ID" \
+            --bot_token "$DISCORD_BOT_TOKEN" \
             --commands sync_application_commands/commands.json
